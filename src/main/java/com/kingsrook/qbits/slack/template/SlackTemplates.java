@@ -109,7 +109,8 @@ public final class SlackTemplates
    {
       String schema = "[{\"name\":\"title\",\"type\":\"STRING\"},{\"name\":\"body\",\"type\":\"STRING\"},"
          + "{\"name\":\"link\",\"type\":\"URL\",\"required\":true},{\"name\":\"severity\",\"type\":\"STRING\"},"
-         + "{\"name\":\"context\",\"type\":\"STRING\"},{\"name\":\"items\",\"type\":\"LIST\"}]";
+         + "{\"name\":\"context\",\"type\":\"STRING\"},{\"name\":\"items\",\"type\":\"LIST\"},"
+         + "{\"name\":\"summary\",\"type\":\"STRING\"},{\"name\":\"source\",\"type\":\"STRING\"},{\"name\":\"runTime\",\"type\":\"STRING\"}]";
       String blocks = "[{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"{{severity|:information_source:}} *{{title}}*\\n{{body}}\"}},"
          + "{\"type\":\"actions\",\"elements\":[{\"type\":\"button\",\"text\":{\"type\":\"plain_text\",\"text\":\"View\"},\"url\":\"{{link}}\"}]},"
          + "{\"type\":\"context\",\"elements\":[{\"type\":\"mrkdwn\",\"text\":\"{{context|QQQ notification}}\"}]}]";
@@ -117,6 +118,10 @@ public final class SlackTemplates
       {
          String text = "digest".equals(name) ? "*{{title}}*\n{{#each items}}{{@index}}. {{this.title}}\n{{/each}}{{link}}"
             : "*{{title}}*\n{{body}}\n{{link}}";
+         if("delivery".equals(name))
+         {
+            text = "*{{title}}*\n{{body}}\n{{link}}\n{{source}} {{runTime}}";
+         }
          com.kingsrook.qbits.slack.api.SlackApi.ensureTemplate(new com.kingsrook.qbits.slack.api.SlackApiTemplate(name, name, text,
             "notification".equals(name) ? blocks : null, schema, "TRANSACTIONAL"));
       }

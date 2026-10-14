@@ -18,6 +18,7 @@ oauth_config:
       - groups:read
       - users:read
       - files:write
+      - files:read
       - usergroups:read
       - chat:write.customize
     user:
@@ -26,6 +27,7 @@ oauth_config:
       - groups:read
       - im:write
       - files:write
+      - files:read
       - users:read
 settings:
   interactivity:

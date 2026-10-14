@@ -147,6 +147,7 @@ public class SlackQBitProducer implements QBitMetaDataProducer<SlackQBitConfig>
       output.add(new SlackOutboxMessagingProviderMetaData().withName(qBitConfig.getBridgeProviderName()));
 
       output.addSelfToInstance(qInstance);
+      com.kingsrook.qbits.slack.delivery.SlackDeliveryDestination.register();
       qInstance.addApp(com.kingsrook.qbits.slack.app.SlackApp.app(qInstance.getTables()));
       com.kingsrook.qbits.slack.app.SlackApp.widgets().forEach(qInstance::addWidget);
       com.kingsrook.qbits.slack.preferences.SlackPreferencesAdapter.register(qInstance);

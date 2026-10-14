@@ -122,6 +122,8 @@ CREATE TABLE slack_message (
    thread_ts VARCHAR(500),
    target_message_id INTEGER,
    attachment_storage_ref VARCHAR(500),
+   attachment_storage_table VARCHAR(500),
+   file_reconcile_required BOOLEAN DEFAULT FALSE,
    attachment_name VARCHAR(500),
    attachment_bytes BIGINT,
    slack_file_id VARCHAR(500),

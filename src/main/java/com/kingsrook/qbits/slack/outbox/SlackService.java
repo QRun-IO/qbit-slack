@@ -101,6 +101,23 @@ public final class SlackService
          return (SlackSendResult.refused(problem));
       }
 
+      for(SlackSendRequest.Attachment attachment : request.getAttachments())
+      {
+         if(attachment.table() == null || attachment.reference() == null || attachment.name() == null
+            || attachment.bytes() == null || attachment.bytes() <= 0 || attachment.bytes() > config.getMaxAttachmentBytes())
+         {
+            return (SlackSendResult.refused("An attachment is missing its storage reference or exceeds the Slack size limit"));
+         }
+         try
+         {
+            com.kingsrook.qbits.slack.phi.SlackPayloadGuard.text(attachment.name(), request.getContentClassification());
+         }
+         catch(IllegalArgumentException e)
+         {
+            return (SlackSendResult.refused("Invalid or restricted Slack attachment"));
+         }
+      }
+
       ///////////////////////////////////////////////////////////////////////
       // who is sending: a user sends only as themselves                    //
       ///////////////////////////////////////////////////////////////////////
@@ -177,7 +194,52 @@ public final class SlackService
             row.withValue("nextAttemptDate", null);
          }
       }
-      return (insert(row));
+      return (request.getAttachments().isEmpty() ? insert(row) : insertDelivery(row, request.getAttachments()));
+   }
+
+   /*******************************************************************************
+    ** Commit a post and its waiting files together. A duplicate key never adds
+    ** children to an earlier delivery; a failed child rolls back the whole set.
+    *******************************************************************************/
+   private static SlackSendResult insertDelivery(QRecord row, List<SlackSendRequest.Attachment> attachments) throws QException
+   {
+      try(var tx = com.kingsrook.qqq.backend.core.actions.QBackendTransaction.openFor(
+         new com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput(SlackTables.MESSAGE)))
+      {
+         QRecord parent = SlackStore.insert(SlackTables.MESSAGE, row, tx);
+         if(parent.getValueInteger("id") == null || parent.getErrors() != null && !parent.getErrors().isEmpty())
+         {
+            throw (new QException("Could not queue Slack delivery"));
+         }
+         for(SlackSendRequest.Attachment attachment : attachments)
+         {
+            QRecord file = new QRecord();
+            for(String field : List.of("ownerUserId", "workspaceId", "connectionId", "postAs", "targetType", "targetRef", "slackChannelId", "channelLabel"))
+            {
+               file.withValue(field, row.getValue(field));
+            }
+            file.withValue("operation", "FILE").withValue("status", "WAITING_PARENT").withValue("attemptCount", 0)
+               .withValue("parentMessageId", parent.getValueInteger("id"))
+               .withValue("attachmentStorageTable", attachment.table()).withValue("attachmentStorageRef", attachment.reference())
+               .withValue("attachmentName", attachment.name()).withValue("attachmentBytes", attachment.bytes());
+            QRecord inserted = SlackStore.insert(SlackTables.MESSAGE, file, tx);
+            if(inserted.getValueInteger("id") == null || inserted.getErrors() != null && !inserted.getErrors().isEmpty())
+            {
+               throw (new QException("Could not queue Slack attachment"));
+            }
+         }
+         tx.commit();
+         return (new SlackSendResult(SlackSendResult.Status.QUEUED, parent.getValueInteger("id"), List.of()));
+      }
+      catch(QException e)
+      {
+         SlackSendResult existing = duplicate(row.getValueString("idempotencyKey"), row.getValueString("ownerUserId"));
+         if(existing != null)
+         {
+            return (existing);
+         }
+         throw (new QException("Could not queue Slack delivery"));
+      }
    }
 
 

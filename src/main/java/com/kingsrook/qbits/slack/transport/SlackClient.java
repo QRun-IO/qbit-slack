@@ -52,6 +52,74 @@ public class SlackClient
 {
    public static final String EVENT_TYPE = "qqq_message";
 
+   /*******************************************************************************
+    ** Obtain a one-use external upload URL for an exact byte length.
+    *******************************************************************************/
+   public SlackResponse filesGetUploadURLExternal(String token, String filename, long length)
+   {
+      return (post(token, "files.getUploadURLExternal", new JSONObject().put("filename", filename).put("length", length)));
+   }
+
+   /*******************************************************************************
+    ** Stream raw bytes without staging or forwarding the API bearer token.
+    ** Only Slack's upload host (or the configured test origin) is accepted.
+    *******************************************************************************/
+   public SlackResponse uploadExternal(String url, java.io.InputStream bytes, long length)
+   {
+      try
+      {
+         URI uri = URI.create(url);
+         URI api = URI.create(baseUrl);
+         boolean slack = "https".equals(uri.getScheme()) && "files.slack.com".equals(uri.getHost()) && uri.getPort() == -1;
+         boolean configured = java.util.Objects.equals(uri.getScheme(), api.getScheme())
+            && java.util.Objects.equals(uri.getHost(), api.getHost()) && uri.getPort() == api.getPort();
+         if(uri.getUserInfo() != null || !(slack || configured))
+         {
+            return (SlackResponse.failure(400, "invalid_upload_url"));
+         }
+         var publisher = HttpRequest.BodyPublishers.fromPublisher(HttpRequest.BodyPublishers.ofInputStream(() -> bytes), length);
+         var response = http.send(HttpRequest.newBuilder(uri).timeout(requestTimeout).header("Content-Type", "application/octet-stream")
+            .POST(publisher).build(), HttpResponse.BodyHandlers.discarding());
+         int status = response.statusCode();
+         return (new SlackResponse(status, status == 200, status == 200 ? null : "http_" + status,
+            status == 429 ? response.headers().firstValue("Retry-After").map(SlackClient::parseSeconds).orElse(DEFAULT_RETRY_AFTER_SECONDS) : null, null, null));
+      }
+      catch(IOException | IllegalArgumentException e)
+      {
+         return (SlackResponse.failure(0, "upload_failed"));
+      }
+      catch(InterruptedException e)
+      {
+         Thread.currentThread().interrupt();
+         return (SlackResponse.failure(0, "interrupted"));
+      }
+   }
+
+   /*******************************************************************************
+    ** Share the uploaded file, with a durable reconciliation marker in its title.
+    *******************************************************************************/
+   public SlackResponse filesCompleteUploadExternal(String token, String fileId, String title, String channel, String threadTs)
+   {
+      JSONObject body = new JSONObject().put("files", new JSONArray().put(new JSONObject().put("id", fileId).put("title", title)));
+      if(channel != null)
+      {
+         body.put("channel_id", channel);
+      }
+      if(threadTs != null)
+      {
+         body.put("thread_ts", threadTs);
+      }
+      return (post(token, "files.completeUploadExternal", body));
+   }
+
+   /*******************************************************************************
+    ** List channel files since the first claim; files.list uses numbered pages.
+    *******************************************************************************/
+   public SlackResponse filesList(String token, String channel, String since, int page)
+   {
+      return (get(token, "files.list", Map.of("channel", channel, "ts_from", since, "count", "100", "page", String.valueOf(page))));
+   }
+
    private static final int DEFAULT_RETRY_AFTER_SECONDS = 30;
 
    private final String     baseUrl;

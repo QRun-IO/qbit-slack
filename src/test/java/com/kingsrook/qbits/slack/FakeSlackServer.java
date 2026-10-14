@@ -51,6 +51,16 @@ import org.json.JSONObject;
 public class FakeSlackServer implements AutoCloseable
 {
    private final HttpServer server;
+   private final Map<String, byte[]> uploads = new ConcurrentHashMap<>();
+   private final Map<String, JSONArray> files = new ConcurrentHashMap<>();
+
+   /*******************************************************************************
+    ** Exact raw upload bytes, including non-UTF8 content.
+    *******************************************************************************/
+   public byte[] uploaded(String fileId)
+   {
+      return (uploads.get(fileId));
+   }
 
    private final List<Recorded>                 requests = new CopyOnWriteArrayList<>();
    private final Map<String, Deque<Reply>>      scripts  = new ConcurrentHashMap<>();
@@ -227,7 +237,12 @@ public class FakeSlackServer implements AutoCloseable
    private void handle(HttpExchange exchange) throws IOException
    {
       String method = exchange.getRequestURI().getPath().substring("/api/".length());
-      String body   = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+      byte[] raw = exchange.getRequestBody().readAllBytes();
+      String body = new String(raw, StandardCharsets.UTF_8);
+      if(method.startsWith("upload/"))
+      {
+         uploads.put(method.substring("upload/".length()), raw);
+      }
       String query  = exchange.getRequestURI().getRawQuery();
       Recorded recorded = new Recorded(method, exchange.getRequestHeaders().getFirst("Authorization"), query, body);
       requests.add(recorded);
@@ -295,6 +310,24 @@ public class FakeSlackServer implements AutoCloseable
 
       switch(request.method())
       {
+         case "files.getUploadURLExternal":
+            String fileId = "F" + tsCount.incrementAndGet();
+            return (Reply.of(200, new JSONObject().put("ok", true).put("file_id", fileId).put("upload_url", baseUrl() + "/upload/" + fileId).toString()));
+         case "files.completeUploadExternal":
+            JSONObject body = request.json();
+            JSONArray completed = body.getJSONArray("files");
+            JSONArray channelFiles = files.computeIfAbsent(body.optString("channel_id"), k -> new JSONArray());
+            for(int i = 0; i < completed.length(); i++)
+            {
+               channelFiles.put(completed.getJSONObject(i));
+            }
+            return (Reply.of(200, new JSONObject().put("ok", true).put("files", completed).toString()));
+         case "files.list":
+            return (Reply.of(200, new JSONObject().put("ok", true).put("files", files.getOrDefault(query.get("channel"), new JSONArray())).toString()));
+         case "users.conversations":
+            JSONArray channels = new JSONArray();
+            names.forEach((id, name) -> channels.put(new JSONObject().put("id", id).put("name", name)));
+            return (Reply.of(200, new JSONObject().put("ok", true).put("channels", channels).toString()));
          case "oauth.v2.access":
             return (Reply.error("invalid_code"));
          case "auth.revoke":

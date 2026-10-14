@@ -459,9 +459,11 @@ public final class SlackTables
          .withField(field("threadTs", QFieldType.STRING).withMaxLength(500))
          .withField(field("targetMessageId", QFieldType.INTEGER).withPossibleValueSourceName(MESSAGE))
          .withField(field("attachmentStorageRef", QFieldType.STRING).withMaxLength(500))
+         .withField(field("attachmentStorageTable", QFieldType.STRING).withMaxLength(500))
          .withField(field("attachmentName", QFieldType.STRING).withMaxLength(500))
          .withField(field("attachmentBytes", QFieldType.LONG))
          .withField(field("slackFileId", QFieldType.STRING).withMaxLength(500))
+         .withField(field("fileReconcileRequired", QFieldType.BOOLEAN).withDefaultValue(false))
          .withField(field("slackTs", QFieldType.STRING).withMaxLength(500))
          .withField(field("permalink", QFieldType.TEXT))
          .withField(field("attemptCount", QFieldType.INTEGER).withDefaultValue(0))
@@ -477,7 +479,7 @@ public final class SlackTables
          .withField(field("deliveryLogId", QFieldType.STRING).withMaxLength(500));
       table.withUniqueKey(new UniqueKey("idempotencyKey"));
       table.withSection(SectionFactory.defaultT1("id", "status", "ownerUserId", "workspaceId", "targetType", "channelLabel"));
-      table.withSection(SectionFactory.defaultT2("connectionId", "postAs", "operation", "targetRef", "slackChannelId", "category", "templateName", "text", "blocksJson", "variablesSnapshot", "idempotencyKey", "parentMessageId", "threadTs", "targetMessageId", "attachmentStorageRef", "attachmentName", "attachmentBytes", "slackFileId", "slackTs", "permalink", "attemptCount", "nextAttemptDate", "leaseExpiresDate", "lastErrorCode", "lastError", "sentDate", "deadLetterDate", "linkedTableName", "linkedRecordId", "senderName", "deliveryLogId"));
+      table.withSection(SectionFactory.defaultT2("connectionId", "postAs", "operation", "targetRef", "slackChannelId", "category", "templateName", "text", "blocksJson", "variablesSnapshot", "idempotencyKey", "parentMessageId", "threadTs", "targetMessageId", "attachmentStorageTable", "attachmentStorageRef", "attachmentName", "attachmentBytes", "slackFileId", "fileReconcileRequired", "slackTs", "permalink", "attemptCount", "nextAttemptDate", "leaseExpiresDate", "lastErrorCode", "lastError", "sentDate", "deadLetterDate", "linkedTableName", "linkedRecordId", "senderName", "deliveryLogId"));
       table.withSection(SectionFactory.defaultT3("createDate", "modifyDate"));
       table.withSection(SectionFactory.customT2("attempts", new QIcon("list")).withLabel("Attempts").withWidgetName(childWidgetName(ATTEMPT)));
       return (table);
