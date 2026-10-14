@@ -1,0 +1,41 @@
+# Slack app manifest for qbit-slack (docs/DESIGN.md section 3.5).
+# Replace <host> with the admin host (for kof22: admin.kof22.com) before creating the app.
+display_information:
+  name: QQQ
+  description: Messages, reports and exports from your QQQ apps.
+features:
+  bot_user:
+    display_name: QQQ
+    always_online: false
+oauth_config:
+  redirect_urls:
+    - https://<host>/qqq/hooks/slack/oauth/callback
+  scopes:
+    bot:
+      - chat:write
+      - im:write
+      - channels:read
+      - groups:read
+      - users:read
+      - files:write
+      - usergroups:read
+      - chat:write.customize
+    user:
+      - chat:write
+      - channels:read
+      - groups:read
+      - im:write
+      - files:write
+      - users:read
+settings:
+  interactivity:
+    is_enabled: true
+    request_url: https://<host>/qqq/hooks/slack/interactions
+  event_subscriptions:
+    request_url: https://<host>/qqq/hooks/slack/events
+    bot_events:
+      - app_uninstalled
+      - tokens_revoked
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

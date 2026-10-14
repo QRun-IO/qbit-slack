@@ -1,17 +1,49 @@
-# qbit-template-extension
+# CLAUDE.md
 
-GitHub template repository for scaffolding QQQ "Extension QBits" (infrastructure-level plugins: table customizers, auth, audit, action wrappers). Not a shipping library — consumers click "Use this template" and rename the `com.kingsrook.qbits.example` package.
+This file provides guidance to Claude Code when working with code in this repository.
 
-## QQQ 4.0 baseline — 2026-09-24
+## Project Overview
 
-The historical review below predates the 4.0 migration. This template targets Java 21 and the public QQQ 4.0.0 release from Maven Central. The corrected APIs, license references and actual template commands are in README.md and docs/00-getting-started.md. Preserve the documented multi-instance and scaffold limitations.
+**QBit Slack**: Slack for a QQQ system, with per-user and per-tenant connections, a core messaging
+provider and delivery destination, a durable outbox, templates, readiness and PHI-safe payloads.
+Design: `docs/DESIGN.md`.
 
-## Knowledge base
+## Build Commands
 
-Reviewed dossiers for this repo and the wider QQQ platform live in the second-brain vault:
+```bash
+./mvnw compile          # always use the wrapper: Maven 3.10 cannot read the parent POM
+./mvnw test
+./mvnw verify           # tests + Checkstyle + guardrails + JaCoCo gate (70% instructions, 90% classes)
+```
 
-- Hub / entry point: `R:/Git.Local/KofTwentyTwo/second-brain/knowledge/qqq/qqq-hub.md`
-- This repo's dossier: `R:/Git.Local/KofTwentyTwo/second-brain/knowledge/qqq/repos/qbit-template-extension.md`
-- QBit mechanics refresher: `R:/Git.Local/KofTwentyTwo/second-brain/knowledge/qqq/architecture/metadata-model.md`
+## Architecture
 
-Reviewed at commit `e7d4b4d672cc` (branch `main`, 2026-05-21). Known drift as of that review: no `qbit-build-parent` parent pom (org convention), qqq pinned at 0.35.0 on main (0.40.0-SNAPSHOT on develop), README still claims AGPL-3.0 while LICENSE/NOTICE are Apache-2.0, and README references `scripts/customize_template.py` / `actions/ExampleActionCustomizer.java` which do not exist. See the dossier's "Maturity & risks" and "v4.0 impact" sections before modifying the scaffold.
+- **Entry point:** `SlackQBitProducer implements QBitMetaDataProducer<SlackQBitConfig>`, package `com.kingsrook.qbits.slack`.
+- `api` is the only public package (mirrors qbit-email's `EmailApi`). Everything else is internal.
+
+## Invariants
+
+- Every message has an owner (a QQQ user) and is authorized as that owner when queued and again when sent.
+- A message only ever uses its own workspace row's or connection row's token. There is no fallback.
+- Tokens are encrypted, write-only and HIDDEN; they never reach a log, an exception, an audit or an API.
+- Every send goes through the outbox (`slack_message`); nothing posts inline.
+- Classified PHI and PII never enter a Slack payload.
+
+## Naming (owner rule)
+
+- Tables are lowercase snake_case, prefixed `slack_`; the backend name is the table name.
+- Permissions use the full qbit name: `slack.view`, `slack.connect`, `slack.send`, `slack.admin`.
+- Data lives in standard visible tables. Processes are table or record actions, never in the nav.
+- UI goes through the `/qqq/v1` UI API only; Slack callbacks are under `/qqq/hooks/slack/...`.
+
+## Code Style
+
+3-space indent, braces on the next line, `return (x);`, flower-box Javadoc on every class and method, fluent `withX()` setters.
+
+## Release
+
+- CircleCI qqq-orb 0.6.9.
+- `develop` publishes SNAPSHOTs.
+- `release/*` publishes RCs (automated by `.github/workflows/release-rc.yml`).
+- `vX.Y.Z` tags publish releases (GA tags only).
+- Never push `hotfix/*` or `release/*` branches by hand; use `feature/` or `fix/`.
