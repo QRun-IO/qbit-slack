@@ -32,6 +32,32 @@ import com.kingsrook.qbits.slack.metadata.SlackEnums;
  *******************************************************************************/
 public class SlackSendRequest
 {
+   /*******************************************************************************
+    ** A storage reference to stream later, in the owner's session.
+    *******************************************************************************/
+   public record Attachment(String table, String reference, String name, Long bytes)
+   {
+   }
+
+   private java.util.List<Attachment> attachments = java.util.List.of();
+
+   /*******************************************************************************
+    ** Attachments are persisted atomically with the parent post.
+    *******************************************************************************/
+   public java.util.List<Attachment> getAttachments()
+   {
+      return (attachments);
+   }
+
+   /*******************************************************************************
+    ** Supply immutable attachment descriptors.
+    *******************************************************************************/
+   public SlackSendRequest withAttachments(java.util.List<Attachment> value)
+   {
+      attachments = java.util.List.copyOf(value);
+      return (this);
+   }
+
    private String templateName = null;
    private java.util.Map<String, java.io.Serializable> variables = java.util.Map.of();
    private String contentClassification = null;

@@ -387,11 +387,6 @@ public class SlackDispatcher
       String  owner       = message.getValueString("ownerUserId");
       boolean update      = SlackEnums.Operation.UPDATE.name().equals(message.getValueString("operation"));
 
-      if(SlackEnums.Operation.FILE.name().equals(message.getValueString("operation")))
-      {
-         return (new Outcome(Result.PERMANENT, "unsupported", "File messages aren't supported yet", null, null, null, null, null, null, false));
-      }
-
       ///////////////////////////////////////////////////////////////////////////////
       // authorize again, as the owner: access may have changed since queue time.   //
       // the posting identity chosen at queue time is kept (an update must keep it, //
@@ -435,6 +430,11 @@ public class SlackDispatcher
          channel = open.getJson().getJSONObject("channel").optString("id", null);
       }
 
+      if(SlackEnums.Operation.FILE.name().equals(message.getValueString("operation")))
+      {
+         return (file(client, token, channel, claim, send));
+      }
+
       if(claim.reconcile() && !update)
       {
          Outcome reconciled = reconcile(client, token, channel, message, send);
@@ -454,6 +454,104 @@ public class SlackDispatcher
 
       String ts = update ? message.getValueString("slackTs") : response.getString("ts");
       return (new Outcome(Result.SENT, null, null, response.getHttpStatus(), null, ts, response.getString("channel") == null ? channel : response.getString("channel"), send.postAs(), send.connectionId(), false));
+   }
+
+   /*******************************************************************************
+    ** Stream storage as the owner, then complete the external upload. Once an
+    ** upload id exists, retries only reconcile: a lost completion response must
+    ** never create a second file. Unconfirmed uploads remain RETRY_WAIT.
+    *******************************************************************************/
+   private Outcome file(SlackClient client, String token, String channel, Claim claim, AuthorizedSend send) throws QException
+   {
+      QRecord message = claim.message();
+      Integer id = message.getValueInteger("id");
+      if(claim.reconcile() || Boolean.TRUE.equals(message.getValueBoolean("fileReconcileRequired")) || message.getValueString("slackFileId") != null)
+      {
+         SlackStore.update(SlackTables.MESSAGE, new QRecord().withValue("id", id).withValue("fileReconcileRequired", true), null);
+         return (reconcileFile(client, token, channel, message, send));
+      }
+      Long size = message.getValueLong("attachmentBytes");
+      if(size == null || size <= 0 || size > SlackRuntime.config().getMaxAttachmentBytes())
+      {
+         return (new Outcome(Result.PERMANENT, "file_size", "The attachment exceeds the Slack size limit", null, null, null, channel, send.postAs(), send.connectionId(), false));
+      }
+      return (com.kingsrook.qbits.slack.security.SlackOwnerSession.call(message.getValueString("ownerUserId"), () ->
+      {
+         try(java.io.InputStream bytes = new com.kingsrook.qqq.backend.core.actions.tables.StorageAction().getInputStream(
+            new com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput(message.getValueString("attachmentStorageTable"))
+               .withReference(message.getValueString("attachmentStorageRef"))))
+         {
+            SlackResponse allocated = client.filesGetUploadURLExternal(token, message.getValueString("attachmentName"), size);
+            if(!allocated.isOk())
+            {
+               return (failure(allocated, send, channel));
+            }
+            String fileId = allocated.getString("file_id");
+            String url = allocated.getString("upload_url");
+            if(fileId == null || url == null)
+            {
+               return (failure(SlackResponse.failure(0, "invalid_upload_response"), send, channel));
+            }
+            SlackStore.update(SlackTables.MESSAGE, new QRecord().withValue("id", id).withValue("slackFileId", fileId), null);
+            SlackResponse uploaded = client.uploadExternal(url, bytes, size);
+            if(!uploaded.isOk())
+            {
+               return (failure(uploaded, send, channel));
+            }
+            SlackResponse completed = client.filesCompleteUploadExternal(token, fileId,
+               message.getValueString("attachmentName") + " qqq:" + id, channel, message.getValueString("threadTs"));
+            if(!completed.isOk())
+            {
+               return (failure(completed, send, channel));
+            }
+            return (new Outcome(Result.SENT, null, null, completed.getHttpStatus(), null, null, channel, send.postAs(), send.connectionId(), false));
+         }
+         catch(java.io.IOException e)
+         {
+            return (failure(SlackResponse.failure(0, "storage_read_failed"), send, channel));
+         }
+      }));
+   }
+
+   /*******************************************************************************
+    ** A missing marker is inconclusive, including when Slack is still processing
+    ** the upload. Every retry continues reconciliation instead of uploading again.
+    *******************************************************************************/
+   private Outcome reconcileFile(SlackClient client, String token, String channel, QRecord message, AuthorizedSend send) throws QException
+   {
+      var attempts = SlackStore.query(SlackTables.ATTEMPT, SlackStore.equal("messageId", message.getValueInteger("id"))
+         .withOrderBy(new QFilterOrderBy("startDate")).withLimit(1));
+      Instant since = attempts.isEmpty() ? null : attempts.getFirst().getValueInstant("startDate");
+      String oldest = since == null ? "0" : String.valueOf(since.getEpochSecond() - HISTORY_LOOKBACK_SECONDS);
+      for(int page = 1; page <= MAX_HISTORY_PAGES; page++)
+      {
+         SlackResponse response = client.filesList(token, channel, oldest, page);
+         if(!response.isOk())
+         {
+            if(SlackErrorClassifier.classify(response) == SlackErrorClassifier.Kind.AUTH
+               || SlackErrorClassifier.classify(response) == SlackErrorClassifier.Kind.RATE_LIMITED)
+            {
+               return (failure(response, send, channel));
+            }
+            break;
+         }
+         JSONArray files = response.getJson().optJSONArray("files");
+         for(int i = 0; files != null && i < files.length(); i++)
+         {
+            JSONObject found = files.getJSONObject(i);
+            if(found.optString("title").endsWith(" qqq:" + message.getValueInteger("id")) && !found.optString("id").isBlank())
+            {
+               SlackStore.update(SlackTables.MESSAGE, new QRecord().withValue("id", message.getValueInteger("id")).withValue("slackFileId", found.getString("id")), null);
+               return (new Outcome(Result.SENT, null, null, response.getHttpStatus(), null, null, channel, send.postAs(), send.connectionId(), false));
+            }
+         }
+         JSONObject paging = response.getJson().optJSONObject("paging");
+         if(paging == null || page >= paging.optInt("pages", 1))
+         {
+            break;
+         }
+      }
+      return (new Outcome(Result.TRANSIENT, "file_unconfirmed", "Slack hasn't confirmed the earlier file upload", null, null, null, channel, send.postAs(), send.connectionId(), false));
    }
 
 

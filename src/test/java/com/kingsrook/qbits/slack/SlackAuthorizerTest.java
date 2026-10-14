@@ -359,8 +359,8 @@ class SlackAuthorizerTest
 
    /*******************************************************************************
     ** The dispatcher's other entry points: sendNow ignores the due time, an
-    ** unknown id does nothing, and a FILE message is a permanent failure until
-    ** file delivery exists.
+    ** unknown id does nothing, and a FILE message without attachment details
+    ** is a permanent validation failure.
     *******************************************************************************/
    @Test
    void testSendNowUnknownIdAndFileMessage() throws Exception
@@ -377,6 +377,6 @@ class SlackAuthorizerTest
       env.set(SlackTables.MESSAGE, file.messageId(), "operation", "FILE");
       env.dispatch();
       assertThat(env.row(SlackTables.MESSAGE, file.messageId()).getValueString("status")).isEqualTo("DEAD_LETTER");
-      assertThat(env.row(SlackTables.MESSAGE, file.messageId()).getValueString("lastErrorCode")).isEqualTo("unsupported");
+      assertThat(env.row(SlackTables.MESSAGE, file.messageId()).getValueString("lastErrorCode")).isEqualTo("file_size");
    }
 }

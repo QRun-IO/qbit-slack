@@ -165,8 +165,8 @@ App-level secrets are named environment variables, allow-listed in `allowedEnvNa
 
 | Kind | Scopes |
 |---|---|
-| Bot | `chat:write`, `im:write`, `channels:read`, `groups:read`, `users:read`, `files:write`, `usergroups:read` (optional), `chat:write.customize` (optional) |
-| User | `chat:write`, `channels:read`, `groups:read`, `im:write`, `files:write`, `users:read` |
+| Bot | `chat:write`, `im:write`, `channels:read`, `groups:read`, `users:read`, `files:write`, `files:read` (file reconcile), `usergroups:read` (optional), `chat:write.customize` (optional) |
+| User | `chat:write`, `channels:read`, `groups:read`, `im:write`, `files:write`, `files:read`, `users:read` |
 
 - **Redirect URL:** `https://<host>/qqq/hooks/slack/oauth/callback`.
 - **Interactivity URL (phase 2):** `https://<host>/qqq/hooks/slack/interactions`.

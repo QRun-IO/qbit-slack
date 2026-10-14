@@ -47,8 +47,8 @@ import org.json.JSONObject;
  *******************************************************************************/
 public final class SlackConnect
 {
-   public static final String BOT_SCOPES = "chat:write,im:write,channels:read,groups:read,users:read,files:write";
-   public static final String USER_SCOPES = "chat:write,channels:read,groups:read,im:write,files:write,users:read";
+   public static final String BOT_SCOPES = "chat:write,im:write,channels:read,groups:read,users:read,files:write,files:read";
+   public static final String USER_SCOPES = "chat:write,channels:read,groups:read,im:write,files:write,files:read,users:read";
 
    /*******************************************************************************
     ** Utility class.
