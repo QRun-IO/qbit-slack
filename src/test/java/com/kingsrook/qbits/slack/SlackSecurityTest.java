@@ -191,8 +191,8 @@ class SlackSecurityTest
       // the system user's ordinary query does not return them either (hidden fields are omitted by default)
       assertThat(SlackH2Support.query(SlackTables.WORKSPACE).get(0).getValues()).doesNotContainKey("botToken");
 
-      // a user session: values, fields and metadata
-      SlackH2Support.asUser(instance, "userA", null, false);
+      // even an administrator cannot access token values, fields or metadata
+      SlackH2Support.asUser(instance, "userA", null, false).withPermissions("slack.admin");
       for(QRecord record : SlackH2Support.query(SlackTables.WORKSPACE))
       {
          assertThat(record.getValues()).doesNotContainKey("botToken");
@@ -247,7 +247,7 @@ class SlackSecurityTest
       assertThat(cipher.decrypt(row.getValueString("botToken"), binding)).isEqualTo("xoxb-FAKE-ROUNDTRIP");
       assertThatThrownBy(() -> cipher.decrypt(row.getValueString("botToken"), "slack_workspace:" + (workspaceId + 1) + ":1")).isInstanceOf(QException.class);
 
-      SlackH2Support.asUser(instance, "userA", null, false);
+      SlackH2Support.asUser(instance, "userA", null, false).withPermissions("slack.admin");
       QRecord asUser = SlackH2Support.query(SlackTables.WORKSPACE).stream().filter(r -> r.getValueInteger("id") == workspaceId).findFirst().orElseThrow();
       assertThat(asUser.getValues()).doesNotContainKey("botToken");
       assertThat(asUser.getValueString("botTokenFingerprint")).hasSize(8);
