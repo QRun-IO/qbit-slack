@@ -121,11 +121,11 @@ class SlackChannelStatusTest
          env.set(SlackTables.CHANNEL, channel, "enabled", false);
 
          env.slack().script("conversations.info", FakeSlackServer.Reply.of(200, "{\"ok\":true,\"channel\":{\"name\":\"ops\",\"is_member\":true}}"));
-         assertThat(SlackReadiness.channel(channel)).isTrue();
+         assertThat(SlackReadiness.channel(channel)).isEqualTo(SlackReadiness.ChannelCheck.USABLE);
          assertThat(env.row(SlackTables.CHANNEL, channel).getValueBoolean("botIsMember")).isTrue();
 
          env.slack().script("conversations.info", FakeSlackServer.Reply.error("channel_not_found"));
-         assertThat(SlackReadiness.channel(channel)).isFalse();
+         assertThat(SlackReadiness.channel(channel)).isEqualTo(SlackReadiness.ChannelCheck.NEEDS_ATTENTION);
          QRecord row = env.row(SlackTables.CHANNEL, channel);
          assertThat(row.getValueBoolean("botIsMember")).isFalse();
          assertThat(row.getValueInstant("checkedAt")).isNotNull();
@@ -148,7 +148,7 @@ class SlackChannelStatusTest
          env.slack().members("C1", "U1", "UBOT");
          env.slack().name("C1", "ops");
 
-         env.slack().script("auth.test", new FakeSlackServer.Reply(200, OK_AUTH, Map.of("x-oauth-scopes", SlackConnect.BOT_SCOPES + ",usergroups:read,chat:write.customize")));
+         env.slack().script("auth.test", new FakeSlackServer.Reply(200, OK_AUTH, Map.of("x-oauth-scopes", SlackConnect.BOT_SCOPES + ",usergroups:read")));
          env.slack().script("usergroups.list", FakeSlackServer.Reply.of(200, "{\"ok\":true,\"usergroups\":[{\"id\":\"S123\",\"handle\":\"oncall-team\"},{\"id\":\"S999\",\"handle\":\"other\"}]}"));
          SlackReadiness.workspace(workspace);
          assertThat(env.row(SlackTables.USER_GROUP, group).getValueString("handle")).isEqualTo("oncall-team");
@@ -161,6 +161,62 @@ class SlackChannelStatusTest
       }
    }
 
+
+
+   /*******************************************************************************
+    ** A rate limit, outage or invalid auth is not an answer: the rows keep what
+    ** they had, the loop stops, and the check is a warning, not a failure.
+    *******************************************************************************/
+   @Test
+   void inconclusiveAnswersLeaveTheRowsAlone() throws Exception
+   {
+      try(SlackTestEnv env = environment())
+      {
+         int workspace = env.workspace("T1", null, "xoxb-test", "UBOT");
+         int first     = env.channel(workspace, "a", "C1", "a");
+         int second    = env.channel(workspace, "b", "C2", "b");
+         env.set(SlackTables.CHANNEL, first, "botIsMember", true);
+         env.set(SlackTables.CHANNEL, second, "botIsMember", true);
+         List<FakeSlackServer.Reply> replies = List.of(new FakeSlackServer.Reply(429, "{\"ok\":false,\"error\":\"ratelimited\"}", Map.of("Retry-After", "30")),
+            new FakeSlackServer.Reply(500, "oops", Map.of()), FakeSlackServer.Reply.error("invalid_auth"));
+         for(FakeSlackServer.Reply reply : replies)
+         {
+            env.slack().clearRequests();
+            env.slack().script("auth.test", new FakeSlackServer.Reply(200, OK_AUTH, Map.of("x-oauth-scopes", SlackConnect.BOT_SCOPES)));
+            env.slack().script("conversations.info", reply);
+            var result = SlackReadiness.workspace(workspace);
+            assertThat(result.checks()).anyMatch(c -> c.name().equals("registeredChannels") && c.status().equals("WARN"));
+            assertThat(result.ready()).isTrue();
+            assertThat(env.slack().requests("conversations.info")).as("stops after the first inconclusive answer").hasSize(1);
+            for(int id : List.of(first, second))
+            {
+               QRecord row = env.row(SlackTables.CHANNEL, id);
+               assertThat(row.getValueBoolean("botIsMember")).isTrue();
+               assertThat(row.getValueInstant("checkedAt")).isNull();
+            }
+         }
+         env.slack().script("conversations.info", FakeSlackServer.Reply.of(429, "{\"ok\":false}"));
+         assertThat(SlackReadiness.channel(first)).isEqualTo(SlackReadiness.ChannelCheck.UNKNOWN);
+         assertThat(env.row(SlackTables.CHANNEL, first).getValueBoolean("botIsMember")).isTrue();
+      }
+   }
+
+   /*******************************************************************************
+    ** The handle needs only usergroups:read, not chat:write.customize.
+    *******************************************************************************/
+   @Test
+   void handleSyncNeedsOnlyUsergroupsRead() throws Exception
+   {
+      try(SlackTestEnv env = environment())
+      {
+         int workspace = env.workspace("T1", null, "xoxb-test", "UBOT");
+         int group     = env.userGroup(workspace, "oncall", "S123", "C1");
+         env.slack().script("auth.test", new FakeSlackServer.Reply(200, OK_AUTH, Map.of("x-oauth-scopes", SlackConnect.BOT_SCOPES + ",usergroups:read")));
+         env.slack().script("usergroups.list", FakeSlackServer.Reply.of(200, "{\"ok\":true,\"usergroups\":[{\"id\":\"S123\",\"handle\":\"oncall-team\"}]}"));
+         SlackReadiness.workspace(workspace);
+         assertThat(env.row(SlackTables.USER_GROUP, group).getValueString("handle")).isEqualTo("oncall-team");
+      }
+   }
 
 
    /*******************************************************************************

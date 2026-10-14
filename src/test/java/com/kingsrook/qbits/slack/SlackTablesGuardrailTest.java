@@ -169,6 +169,26 @@ class SlackTablesGuardrailTest
 
 
    /*******************************************************************************
+    ** Help a host put in the slot first is never replaced by the bundle.
+    *******************************************************************************/
+   @Test
+   void hostHelpIsKept() throws Exception
+   {
+      QInstance instance = SlackH2Support.setup(c ->
+      {
+      });
+      QHelpContent host = new QHelpContent().withContentAsMarkdown("Host help for channels");
+      instance.getTable(SlackTables.CHANNEL).getHelpContent().put(SlackHelp.SLOT, new ArrayList<>(List.of(host)));
+      instance.getApp(SlackHelp.APP_NAME).getHelpContent().put(SlackHelp.SLOT, new ArrayList<>(List.of(host)));
+      SlackHelp.apply(instance);
+      assertThat(instance.getTable(SlackTables.CHANNEL).getHelpContent().get(SlackHelp.SLOT)).containsExactly(host);
+      assertThat(instance.getApp(SlackHelp.APP_NAME).getHelpContent().get(SlackHelp.SLOT)).containsExactly(host);
+      assertThat(instance.getTable(SlackTables.MESSAGE).getHelpContent().get(SlackHelp.SLOT).get(0).getContent()).contains("How rows get created");
+   }
+
+
+
+   /*******************************************************************************
     ** SlackTables declares CONSTANT = "slack_x"; table name to constant name.
     *******************************************************************************/
    private static Map<String, String> constantByTable()

@@ -4,7 +4,7 @@ layer: QBIT
 # Help for the Slack app and every slack_* table, in the QQQ help-bundle format
 # (qqq#1198). Each table entry says what the table is for and how its rows get
 # created, so an empty table explains itself. SlackHelp applies it until the core
-# HelpBundles registry ships in a QQQ release (STAND-IN, qqq#1198).
+# HelpBundles registry ships in a QQQ release.
 # Summaries stay under 120 characters (SlackTablesGuardrailTest).
 entries:
   - key: app:slack;slot:help

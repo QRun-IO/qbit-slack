@@ -130,6 +130,7 @@ public final class SlackReadiness
       List<SlackApiReadinessCheck> checks = new ArrayList<>();
       boolean good = false;
       boolean channels = true;
+      boolean channelsUnknown = false;
       boolean optionalScopes = false;
       try
       {
@@ -143,10 +144,20 @@ public final class SlackReadiness
          {
             if(Boolean.TRUE.equals(channel.getValueBoolean("enabled")))
             {
-               channels &= checkChannel(config, token, channel);
+               ChannelCheck outcome = checkChannel(config, token, channel);
+               if(outcome == ChannelCheck.UNKNOWN)
+               {
+                  //////////////////////////////////////////////////////////////////////
+                  // Slack did not give a definitive answer (rate limit, outage, auth) //
+                  // so stop checking this workspace and leave the rows as they were   //
+                  //////////////////////////////////////////////////////////////////////
+                  channelsUnknown = true;
+                  break;
+               }
+               channels &= outcome == ChannelCheck.USABLE;
             }
          }
-         if(optionalScopes)
+         if(response.getScopes() != null && List.of(response.getScopes().split(",")).contains("usergroups:read"))
          {
             syncUserGroups(config, token, id);
          }
@@ -158,7 +169,8 @@ public final class SlackReadiness
       }
       checks.add(new SlackApiReadinessCheck("workspace:" + id, good ? optionalScopes ? "READY" : "WARN" : "ERROR",
          good && !optionalScopes ? "Workspace ready; optional scopes are missing" : "Workspace identity and required scopes"));
-      checks.add(check("registeredChannels", channels, "Enabled channels and bot membership"));
+      checks.add(channelsUnknown && channels ? new SlackApiReadinessCheck("registeredChannels", "WARN", "Slack could not confirm the channels; they will be checked again")
+         : check("registeredChannels", channels, "Enabled channels and bot membership"));
       SlackApiReadiness result = result(checks);
       WORKSPACES.computeIfAbsent(QContext.getQInstance(), key -> new java.util.concurrent.ConcurrentHashMap<>()).put(id, result);
       SlackStore.update(SlackTables.WORKSPACE, new QRecord().withValue("id", id).withValue("readinessStatus", result.ready() ? "OK" : "FAIL")
@@ -167,18 +179,32 @@ public final class SlackReadiness
    }
 
    /*******************************************************************************
-    ** Check one registered channel against Slack and write what Slack says back
-    ** to its row (name, privacy, bot membership, archived, purpose, checked
-    ** time), so the Registered Channels screen shows its real status. A channel
-    ** Slack cannot return is recorded as "bot not a member" with a fresh
-    ** checked time. Returns true when the channel is usable (not archived and
-    ** the bot is a member).
+    ** What a channel check found. UNKNOWN means Slack gave no definitive answer
+    ** (rate limit, timeout, outage, invalid auth), so nothing was written.
     *******************************************************************************/
-   static boolean checkChannel(SlackQBitConfig config, String token, QRecord channel) throws QException
+   public enum ChannelCheck
+   {
+      USABLE, NEEDS_ATTENTION, UNKNOWN
+   }
+
+   /*******************************************************************************
+    ** Check one registered channel against Slack and, on a definitive answer,
+    ** write what Slack says back to its row (name, privacy, bot membership,
+    ** archived, purpose, checked time). Definitive: the channel came back, or
+    ** Slack said channel_not_found or not_in_channel (recorded as bot not a
+    ** member). Anything else leaves the row alone.
+    *******************************************************************************/
+   static ChannelCheck checkChannel(SlackQBitConfig config, String token, QRecord channel) throws QException
    {
       var     info = SlackRuntime.client(config).conversationsInfo(token, channel.getValueString("slackChannelId"));
       var     json = info.getJson() == null ? null : info.getJson().optJSONObject("channel");
       boolean ok   = info.isOk() && json != null;
+      boolean gone = !info.isOk() && info.getRetryAfterSeconds() == null && info.getHttpStatus() > 0 && info.getHttpStatus() < 500
+         && ("channel_not_found".equals(info.getError()) || "not_in_channel".equals(info.getError()));
+      if(!ok && !gone)
+      {
+         return (ChannelCheck.UNKNOWN);
+      }
       QRecord update = new QRecord().withValue("id", channel.getValueInteger("id")).withValue("checkedAt", SlackRuntime.clock().instant());
       if(ok)
       {
@@ -196,31 +222,19 @@ public final class SlackReadiness
          update.withValue("botIsMember", false);
       }
       SlackStore.update(SlackTables.CHANNEL, update, null);
-      return (ok && !json.optBoolean("is_archived", false) && json.optBoolean("is_member", false));
+      return (ok && !json.optBoolean("is_archived", false) && json.optBoolean("is_member", false) ? ChannelCheck.USABLE : ChannelCheck.NEEDS_ATTENTION);
    }
 
    /*******************************************************************************
     ** The "Check channels" action: check the given registered channel with its
-    ** workspace's bot token, as the signed-in administrator.
+    ** workspace bot token, as the signed-in administrator. A token problem is
+    ** thrown so the action can report it for this row only.
     *******************************************************************************/
-   public static boolean channel(Integer id) throws QException
+   public static ChannelCheck channel(Integer id) throws QException
    {
       QRecord channel = SlackConnect.visible(SlackTables.CHANNEL, id);
       SlackQBitConfig config = SlackRuntime.config();
-      try
-      {
-         return (checkChannel(config, SlackTokens.botToken(config, channel.getValueInteger("workspaceId")), channel));
-      }
-      catch(QException e)
-      {
-         throw (e);
-      }
-      catch(Exception e)
-      {
-         SlackStore.update(SlackTables.CHANNEL, new QRecord().withValue("id", id).withValue("botIsMember", false)
-            .withValue("checkedAt", SlackRuntime.clock().instant()), null);
-         return (false);
-      }
+      return (checkChannel(config, SlackTokens.botToken(config, channel.getValueInteger("workspaceId")), channel));
    }
 
    /*******************************************************************************
