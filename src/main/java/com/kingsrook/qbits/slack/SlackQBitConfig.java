@@ -40,6 +40,33 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
  *******************************************************************************/
 public class SlackQBitConfig implements QBitConfig
 {
+   private final java.util.Map<String, com.kingsrook.qbits.slack.api.SlackActionMetaData> actions = new java.util.LinkedHashMap<>();
+
+   /*******************************************************************************
+    ** Register a server-owned action. Approve and reject are application-defined.
+    *******************************************************************************/
+   public SlackQBitConfig withAction(com.kingsrook.qbits.slack.api.SlackActionMetaData action)
+   {
+      if(action == null || action.getName() == null || !action.getName().matches("[a-zA-Z][a-zA-Z0-9_]{0,79}")
+         || action.getLabel() == null || action.getLabel().isBlank() || action.getLabel().length() > 75
+         || action.getProcessName() == null || action.getPermissionName() == null
+         || action.getStyle() != null && !List.of("primary", "danger").contains(action.getStyle())
+         || (action.getConfirmTitle() == null) != (action.getConfirmText() == null))
+      {
+         throw (new IllegalArgumentException("Invalid Slack action metadata"));
+      }
+      actions.put(action.getName(), action);
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Registered actions keyed by name.
+    *******************************************************************************/
+   public java.util.Map<String, com.kingsrook.qbits.slack.api.SlackActionMetaData> getActions()
+   {
+      return (java.util.Collections.unmodifiableMap(actions));
+   }
+
    public static final Pattern ENV_NAME = Pattern.compile("^[A-Z_][A-Z0-9_]{0,99}$");
 
    private String clientIdEnvName = "SLACK_CLIENT_ID";

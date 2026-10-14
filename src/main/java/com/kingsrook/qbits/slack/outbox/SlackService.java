@@ -177,6 +177,7 @@ public final class SlackService
       QRecord row;
       try
       {
+         com.kingsrook.qbits.slack.interactivity.SlackActions.validate(request);
          row = baseRow(request, storedOwner, send, SlackEnums.Operation.POST);
       }
       catch(IllegalArgumentException e)
@@ -193,6 +194,10 @@ public final class SlackService
          {
             row.withValue("nextAttemptDate", null);
          }
+      }
+      if(!request.getActions().isEmpty())
+      {
+         return (insertActions(row, request));
       }
       return (request.getAttachments().isEmpty() ? insert(row) : insertDelivery(row, request.getAttachments()));
    }
@@ -284,6 +289,37 @@ public final class SlackService
     *******************************************************************************/
    public static SlackSendResult update(Integer messageId, SlackSendRequest request) throws QException
    {
+      return (update(messageId, request, false));
+   }
+
+   /*******************************************************************************
+    ** Build only the trusted completion replacement; public requests still require
+    ** the raw-block permission. The original owner is reauthorized for the update.
+    *******************************************************************************/
+   public static SlackSendResult updateInteraction(QRecord message, int interactionId, String context) throws QException
+   {
+      com.kingsrook.qbits.slack.phi.SlackPayloadGuard.text(context, null);
+      JSONArray blocks = message.getValueString("blocksJson") == null ? new JSONArray() : new JSONArray(message.getValueString("blocksJson"));
+      JSONArray replacement = new JSONArray();
+      for(int i = 0; i < blocks.length(); i++)
+      {
+         if(!"actions".equals(blocks.getJSONObject(i).optString("type")))
+         {
+            replacement.put(blocks.getJSONObject(i));
+         }
+      }
+      replacement.put(new org.json.JSONObject().put("type", "context").put("elements", new JSONArray()
+         .put(new org.json.JSONObject().put("type", "plain_text").put("text", context))));
+      return (SlackStore.asSystem(() -> update(message.getValueInteger("id"), new SlackSendRequest()
+         .withOwnerUserId(message.getValueString("ownerUserId")).withText(message.getValueString("text"))
+         .withBlocksJson(replacement.toString()).withIdempotencyKey("interaction:" + interactionId), true)));
+   }
+
+   /*******************************************************************************
+    ** Shared authorization and outbox path for updates.
+    *******************************************************************************/
+   private static SlackSendResult update(Integer messageId, SlackSendRequest request, boolean generatedBlocks) throws QException
+   {
       SlackQBitConfig config = SlackRuntime.config();
       if(config == null)
       {
@@ -305,7 +341,7 @@ public final class SlackService
       {
          return (SlackSendResult.refused("Only the owner can update a Slack message"));
       }
-      String denied = permissionProblem(owner, !"SECURITY".equals(request.getCategory()) && request.getBlocksJson() != null && !request.getBlocksJson().isBlank());
+      String denied = permissionProblem(owner, !generatedBlocks && !"SECURITY".equals(request.getCategory()) && request.getBlocksJson() != null && !request.getBlocksJson().isBlank());
       if(denied != null)
       {
          return (SlackSendResult.refused(denied));
@@ -591,4 +627,33 @@ public final class SlackService
       }
       return (existing);
    }
+
+
+
+   /*******************************************************************************
+    ** Publish the row and signed action values atomically to the dispatcher.
+    *******************************************************************************/
+   private static SlackSendResult insertActions(QRecord row, SlackSendRequest request) throws QException
+   {
+      try(var tx = com.kingsrook.qqq.backend.core.actions.QBackendTransaction.openFor(
+         new com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput(SlackTables.MESSAGE)))
+      {
+         QRecord inserted = SlackStore.insert(SlackTables.MESSAGE, row, tx);
+         if(inserted.getValueInteger("id") == null || inserted.getErrors() != null && !inserted.getErrors().isEmpty())
+         {
+            throw (new QException("Could not queue Slack actions"));
+         }
+         row.withValue("id", inserted.getValueInteger("id"));
+         SlackStore.update(SlackTables.MESSAGE, new QRecord().withValue("id", inserted.getValueInteger("id"))
+            .withValue("blocksJson", com.kingsrook.qbits.slack.interactivity.SlackActions.blocks(row, request)), tx);
+         tx.commit();
+         return (new SlackSendResult(SlackSendResult.Status.QUEUED, inserted.getValueInteger("id"), List.of()));
+      }
+      catch(Exception e)
+      {
+         SlackSendResult existing = duplicate(row.getValueString("idempotencyKey"), row.getValueString("ownerUserId"));
+         return (existing == null ? SlackSendResult.refused("Could not queue Slack actions") : existing);
+      }
+   }
+
 }

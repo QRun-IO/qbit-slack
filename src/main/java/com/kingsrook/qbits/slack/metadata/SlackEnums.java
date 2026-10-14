@@ -195,4 +195,12 @@ public final class SlackEnums
       AUTH_FAILURE,
       LEASE_EXPIRED
    }
+
+   /*******************************************************************************
+    ** Terminal interaction outcomes; an uncompleted row is in flight.
+    *******************************************************************************/
+   public enum InteractionOutcome implements SlackEnum
+   {
+      DONE, DENIED, FAILED, REJECTED, EXPIRED, UNLINKED
+   }
 }

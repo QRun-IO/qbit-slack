@@ -310,6 +310,8 @@ public class FakeSlackServer implements AutoCloseable
 
       switch(request.method())
       {
+         case "response":
+            return (Reply.of(200, "ok"));
          case "files.getUploadURLExternal":
             String fileId = "F" + tsCount.incrementAndGet();
             return (Reply.of(200, new JSONObject().put("ok", true).put("file_id", fileId).put("upload_url", baseUrl() + "/upload/" + fileId).toString()));

@@ -32,6 +32,25 @@ import com.kingsrook.qbits.slack.metadata.SlackEnums;
  *******************************************************************************/
 public class SlackSendRequest
 {
+   private java.util.List<String> actions = java.util.List.of();
+
+   /*******************************************************************************
+    ** Registered action names.
+    *******************************************************************************/
+   public java.util.List<String> getActions()
+   {
+      return (actions);
+   }
+
+   /*******************************************************************************
+    ** Snapshot the requested actions.
+    *******************************************************************************/
+   public SlackSendRequest withActions(java.util.List<String> values)
+   {
+      actions = java.util.List.copyOf(values);
+      return (this);
+   }
+
    /*******************************************************************************
     ** A storage reference to stream later, in the owner's session.
     *******************************************************************************/
