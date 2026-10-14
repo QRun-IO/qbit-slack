@@ -143,10 +143,12 @@ public final class SlackReadiness
          {
             if(Boolean.TRUE.equals(channel.getValueBoolean("enabled")))
             {
-               var info = SlackRuntime.client(config).conversationsInfo(token, channel.getValueString("slackChannelId"));
-               var json = info.getJson() == null ? null : info.getJson().optJSONObject("channel");
-               channels &= info.isOk() && json != null && !json.optBoolean("is_archived", true) && json.optBoolean("is_member", false);
+               channels &= checkChannel(config, token, channel);
             }
+         }
+         if(optionalScopes)
+         {
+            syncUserGroups(config, token, id);
          }
       }
       catch(Exception e)
@@ -162,6 +164,95 @@ public final class SlackReadiness
       SlackStore.update(SlackTables.WORKSPACE, new QRecord().withValue("id", id).withValue("readinessStatus", result.ready() ? "OK" : "FAIL")
          .withValue("readinessCheckedAt", SlackRuntime.clock().instant()).withValue("readinessSummary", result.ready() ? "Workspace ready" : "Workspace needs attention"), null);
       return (result);
+   }
+
+   /*******************************************************************************
+    ** Check one registered channel against Slack and write what Slack says back
+    ** to its row (name, privacy, bot membership, archived, purpose, checked
+    ** time), so the Registered Channels screen shows its real status. A channel
+    ** Slack cannot return is recorded as "bot not a member" with a fresh
+    ** checked time. Returns true when the channel is usable (not archived and
+    ** the bot is a member).
+    *******************************************************************************/
+   static boolean checkChannel(SlackQBitConfig config, String token, QRecord channel) throws QException
+   {
+      var     info = SlackRuntime.client(config).conversationsInfo(token, channel.getValueString("slackChannelId"));
+      var     json = info.getJson() == null ? null : info.getJson().optJSONObject("channel");
+      boolean ok   = info.isOk() && json != null;
+      QRecord update = new QRecord().withValue("id", channel.getValueInteger("id")).withValue("checkedAt", SlackRuntime.clock().instant());
+      if(ok)
+      {
+         String purpose = json.optJSONObject("purpose") == null ? "" : json.optJSONObject("purpose").optString("value", "");
+         String topic   = json.optJSONObject("topic") == null ? "" : json.optJSONObject("topic").optString("value", "");
+         update.withValue("isPrivate", json.optBoolean("is_private", false)).withValue("isArchived", json.optBoolean("is_archived", false))
+            .withValue("botIsMember", json.optBoolean("is_member", false)).withValue("description", purpose.isBlank() ? topic.isBlank() ? null : topic : purpose);
+         if(!json.optString("name", "").isBlank())
+         {
+            update.withValue("slackChannelName", json.getString("name"));
+         }
+      }
+      else
+      {
+         update.withValue("botIsMember", false);
+      }
+      SlackStore.update(SlackTables.CHANNEL, update, null);
+      return (ok && !json.optBoolean("is_archived", false) && json.optBoolean("is_member", false));
+   }
+
+   /*******************************************************************************
+    ** The "Check channels" action: check the given registered channel with its
+    ** workspace's bot token, as the signed-in administrator.
+    *******************************************************************************/
+   public static boolean channel(Integer id) throws QException
+   {
+      QRecord channel = SlackConnect.visible(SlackTables.CHANNEL, id);
+      SlackQBitConfig config = SlackRuntime.config();
+      try
+      {
+         return (checkChannel(config, SlackTokens.botToken(config, channel.getValueInteger("workspaceId")), channel));
+      }
+      catch(QException e)
+      {
+         throw (e);
+      }
+      catch(Exception e)
+      {
+         SlackStore.update(SlackTables.CHANNEL, new QRecord().withValue("id", id).withValue("botIsMember", false)
+            .withValue("checkedAt", SlackRuntime.clock().instant()), null);
+         return (false);
+      }
+   }
+
+   /*******************************************************************************
+    ** Resolve each enabled registered user group's @handle from usergroups.list
+    ** and keep it on the row, so mentions show the handle. Best effort: a
+    ** failure leaves the rows as they were.
+    *******************************************************************************/
+   static void syncUserGroups(SlackQBitConfig config, String token, Integer workspaceId) throws QException
+   {
+      var response = SlackRuntime.client(config).usergroupsList(token);
+      var array    = response.isOk() && response.getJson() != null ? response.getJson().optJSONArray("usergroups") : null;
+      if(array == null)
+      {
+         return;
+      }
+      Map<String, String> handles = new java.util.HashMap<>();
+      for(int i = 0; i < array.length(); i++)
+      {
+         var group = array.optJSONObject(i);
+         if(group != null && !group.optString("id", "").isBlank())
+         {
+            handles.put(group.getString("id"), group.optString("handle", ""));
+         }
+      }
+      for(QRecord row : SlackStore.queryAsCurrent(SlackTables.USER_GROUP, SlackStore.equal("workspaceId", workspaceId)))
+      {
+         String handle = handles.get(row.getValueString("slackUsergroupId"));
+         if(handle != null && !handle.isBlank() && !handle.equals(row.getValueString("handle")))
+         {
+            SlackStore.update(SlackTables.USER_GROUP, new QRecord().withValue("id", row.getValueInteger("id")).withValue("handle", handle), null);
+         }
+      }
    }
 
    /*******************************************************************************

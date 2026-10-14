@@ -107,7 +107,7 @@ public final class SlackHomeView
          }
       }
       return (table(List.of(column("Workspace", "workspace", "html"), column("Check", "check", "text"), column("Status", "status", "text"), column("Fix", "fix", "text")),
-         rows, "No workspaces installed."));
+         rows, "No workspaces installed. An administrator runs Install for my organization on Connections."));
    }
 
    /*******************************************************************************

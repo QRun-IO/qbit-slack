@@ -31,6 +31,24 @@ See [docs/DESIGN.md](docs/DESIGN.md), sections 3 to 14. The tables are prefixed 
 permissions `slack.`. Secrets are environment-variable names only: `SLACK_CLIENT_ID`,
 `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET` and `SLACK_TOKEN_KEY`.
 
+## Setup and starter data
+
+No Liquibase changelog or host include is needed: the qbit seeds its own data at startup. The three
+built-in templates (`notification`, `digest`, `delivery`) are inserted by `SlackTemplates.seed()`
+when the host starts and on each readiness run. It is insert-only by name, so edits survive.
+
+Everything else is host or runtime data, and every table explains itself when empty (help bundle
+`help/qbit-slack.yaml`):
+
+1. An administrator runs "Install for my organization" (Connections). This creates the workspace.
+2. Each user runs "Connect Slack" so messages go out as them.
+3. Register the channels and user groups processes post to (Registered Channels, User Groups), then
+   run "Check channels". It records the Slack name, private, bot is member, archived, purpose and
+   checked time. Readiness refreshes them on a schedule.
+4. Review the built-in Templates.
+
+Messages, Attempts and Interactions are logs and start empty.
+
 ## Adopting in another app
 
 Send with core `SendMessageAction` and the provider name `slack`, or deliver output to the `slack`

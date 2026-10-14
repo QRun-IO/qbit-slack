@@ -63,6 +63,7 @@ public final class SlackProcesses
    public static final String DISCONNECT = "slack_disconnect";
    public static final String UNINSTALL = "slack_uninstall";
    public static final String READINESS = "slack_check_readiness";
+   public static final String CHECK_CHANNELS = "slack_check_channels";
    public static final String MAINTAIN = "slack_readiness";
    public static final String DISPATCH = "slack_dispatch";
 
@@ -101,7 +102,8 @@ public final class SlackProcesses
       }
       return (List.of(dispatch, readiness, connectAction(CONNECT, "Connect Slack"), connectAction(INSTALL, "Install for my organization"),
          action(TEST_MESSAGE, "Send me a test message", SlackTables.CONNECTION).withMinInputRecords(1).withMaxInputRecords(1), action(DISCONNECT, "Disconnect", SlackTables.CONNECTION),
-         action(UNINSTALL, "Uninstall", SlackTables.WORKSPACE), action(READINESS, "Check readiness", SlackTables.WORKSPACE)));
+         action(UNINSTALL, "Uninstall", SlackTables.WORKSPACE), action(READINESS, "Check readiness", SlackTables.WORKSPACE),
+         action(CHECK_CHANNELS, "Check channels", SlackTables.CHANNEL)));
    }
 
 
@@ -252,6 +254,14 @@ public final class SlackProcesses
                      throw (new QException("Slack readiness action is not permitted"));
                   }
                   SlackReadiness.workspace(row.getValueInteger("id"));
+               }
+               case CHECK_CHANNELS ->
+               {
+                  if(!com.kingsrook.qqq.backend.core.context.QContext.getQSession().hasPermission("slack.admin"))
+                  {
+                     throw (new QException("Slack channel check is not permitted"));
+                  }
+                  SlackReadiness.channel(row.getValueInteger("id"));
                }
                default -> throw (new QException("Unknown Slack action"));
             }
