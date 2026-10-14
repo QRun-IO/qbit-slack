@@ -49,7 +49,7 @@ class SlackMetadataTest
 {
 
    /*******************************************************************************
-    ** All seven tables are produced and the instance validates (H2Support runs
+    ** All eight tables are produced and the instance validates (H2Support runs
     ** QInstanceValidator), with unique keys and relations as designed.
     *******************************************************************************/
    @Test
@@ -59,7 +59,7 @@ class SlackMetadataTest
       {
       });
 
-      assertThat(SlackTables.ALL).hasSize(7);
+      assertThat(SlackTables.ALL).hasSize(8);
       for(String name : SlackTables.ALL)
       {
          QTableMetaData table = instance.getTable(name);
@@ -69,7 +69,7 @@ class SlackMetadataTest
          assertThat(table.getSourceQBitName()).isNotNull();
          assertThat(table.getFields().get("id").getBackendName()).isEqualTo("id");
       }
-      assertThat(instance.getTable("slack_interaction")).isNull();
+      assertThat(instance.getTable("slack_interaction")).isNotNull();
 
       assertThat(uniqueKeys(instance.getTable(SlackTables.WORKSPACE))).contains(List.of("teamId", "tenantKey"));
       assertThat(uniqueKeys(instance.getTable(SlackTables.CONNECTION))).contains(List.of("userId", "workspaceId"));

@@ -47,7 +47,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 /*******************************************************************************
  ** The Slack qbit's tables (docs/DESIGN.md sections 3.1, 3.2, 5.1, 6.2, 6.3 and
  ** 14.1): workspaces, connections, registered channels, user groups, templates,
- ** the message outbox and its attempts. slack_interaction is phase 2.
+ ** the message outbox, attempts and interaction audits.
  **
  ** Security, in one place:
  ** - The host's tenant lock (config securityFields and recordSecurityLocks) goes
@@ -69,17 +69,20 @@ public final class SlackTables
    public static final String USER_GROUP = "slack_user_group";
    public static final String TEMPLATE   = "slack_template";
    public static final String MESSAGE    = "slack_message";
+   public static final String INTERACTION = "slack_interaction";
+   public static final String JOIN_MESSAGE_INTERACTION = MESSAGE + "_join_" + INTERACTION;
+   public static final String JOIN_WORKSPACE_INTERACTION = WORKSPACE + "_join_" + INTERACTION;
    public static final String ATTEMPT    = "slack_message_attempt";
 
    public static final List<String> MAIN = List.of(MESSAGE, CONNECTION, WORKSPACE, CHANNEL, USER_GROUP, TEMPLATE);
 
-   public static final List<String> ALL = List.of(WORKSPACE, CONNECTION, CHANNEL, USER_GROUP, TEMPLATE, MESSAGE, ATTEMPT);
+   public static final List<String> ALL = List.of(WORKSPACE, CONNECTION, CHANNEL, USER_GROUP, TEMPLATE, MESSAGE, ATTEMPT, INTERACTION);
 
    /////////////////////////////////////////////////////////////////////////////
    // written by the qbit itself (the dispatcher and the OAuth callback), never //
    // by users through a table screen                                         //
    /////////////////////////////////////////////////////////////////////////////
-   public static final List<String> SYSTEM_WRITTEN = List.of(MESSAGE, ATTEMPT);
+   public static final List<String> SYSTEM_WRITTEN = List.of(MESSAGE, ATTEMPT, INTERACTION);
 
    public static final String JOIN_WORKSPACE_CONNECTION  = WORKSPACE + "_join_" + CONNECTION;
    public static final String JOIN_WORKSPACE_CHANNEL     = WORKSPACE + "_join_" + CHANNEL;
@@ -127,6 +130,7 @@ public final class SlackTables
       result.add(QPossibleValueSource.newForEnum("slack_message_operation", SlackEnums.Operation.values()));
       result.add(QPossibleValueSource.newForEnum("slack_target_type", SlackEnums.TargetType.values()));
       result.add(QPossibleValueSource.newForEnum("slack_post_as", SlackEnums.PostAs.values()));
+      result.add(QPossibleValueSource.newForEnum("slack_interaction_outcome", SlackEnums.InteractionOutcome.values()));
       result.add(QPossibleValueSource.newForEnum("slack_attempt_outcome", SlackEnums.AttemptOutcome.values()));
 
       for(String name : ALL)
@@ -158,6 +162,7 @@ public final class SlackTables
       tables.add(template(config));
       tables.add(message(config));
       tables.add(attempt(config));
+      tables.add(interaction(config));
 
       for(QTableMetaData table : tables)
       {
@@ -168,6 +173,7 @@ public final class SlackTables
             case CONNECTION -> addTenantLocks(table, config, true, List.of(JOIN_WORKSPACE_CONNECTION));
             case CHANNEL -> addTenantLocks(table, config, true, List.of(JOIN_WORKSPACE_CHANNEL));
             case USER_GROUP -> addTenantLocks(table, config, true, List.of(JOIN_WORKSPACE_USER_GROUP));
+            case INTERACTION -> addTenantLocks(table, config, true, List.of(JOIN_WORKSPACE_INTERACTION));
             case MESSAGE -> addTenantLocks(table, config, true, List.of(JOIN_WORKSPACE_MESSAGE));
             case ATTEMPT -> addTenantLocks(table, config, true, List.of(JOIN_WORKSPACE_MESSAGE, JOIN_MESSAGE_ATTEMPT));
             default -> throw (new IllegalStateException("Unexpected table"));
@@ -229,7 +235,7 @@ public final class SlackTables
          table.withRecordSecurityLock(clone);
       }
 
-      if(CONNECTION.equals(table.getName()))
+      if(CONNECTION.equals(table.getName()) || INTERACTION.equals(table.getName()))
       {
          table.withRecordSecurityLock(SlackSecurity.ownerLock("userId"));
       }
@@ -481,6 +487,7 @@ public final class SlackTables
       table.withSection(SectionFactory.defaultT1("id", "status", "ownerUserId", "workspaceId", "targetType", "channelLabel"));
       table.withSection(SectionFactory.defaultT2("connectionId", "postAs", "operation", "targetRef", "slackChannelId", "category", "templateName", "text", "blocksJson", "variablesSnapshot", "idempotencyKey", "parentMessageId", "threadTs", "targetMessageId", "attachmentStorageTable", "attachmentStorageRef", "attachmentName", "attachmentBytes", "slackFileId", "fileReconcileRequired", "slackTs", "permalink", "attemptCount", "nextAttemptDate", "leaseExpiresDate", "lastErrorCode", "lastError", "sentDate", "deadLetterDate", "linkedTableName", "linkedRecordId", "senderName", "deliveryLogId"));
       table.withSection(SectionFactory.defaultT3("createDate", "modifyDate"));
+      table.withSection(SectionFactory.customT2("interactions", new QIcon("list")).withLabel("Interactions").withWidgetName(childWidgetName(INTERACTION)));
       table.withSection(SectionFactory.customT2("attempts", new QIcon("list")).withLabel("Attempts").withWidgetName(childWidgetName(ATTEMPT)));
       return (table);
    }
@@ -524,6 +531,8 @@ public final class SlackTables
          join(JOIN_WORKSPACE_CHANNEL, WORKSPACE, CHANNEL, "workspaceId"),
          join(JOIN_WORKSPACE_USER_GROUP, WORKSPACE, USER_GROUP, "workspaceId"),
          join(JOIN_WORKSPACE_MESSAGE, WORKSPACE, MESSAGE, "workspaceId"),
+         join(JOIN_MESSAGE_INTERACTION, MESSAGE, INTERACTION, "messageId"),
+         join(JOIN_WORKSPACE_INTERACTION, WORKSPACE, INTERACTION, "workspaceId"),
          join(JOIN_MESSAGE_ATTEMPT, MESSAGE, ATTEMPT, "messageId"),
          join(JOIN_MESSAGE_PARENT_CHILD, MESSAGE, MESSAGE, "parentMessageId")));
    }
@@ -561,7 +570,7 @@ public final class SlackTables
       List<QWidgetMetaData> widgets = new ArrayList<>();
       for(QJoinMetaData join : joins())
       {
-         if(JOIN_MESSAGE_PARENT_CHILD.equals(join.getName()))
+         if(JOIN_MESSAGE_PARENT_CHILD.equals(join.getName()) || JOIN_WORKSPACE_INTERACTION.equals(join.getName()))
          {
             continue;
          }
@@ -569,5 +578,27 @@ public final class SlackTables
             .withMaxRows(50).getWidgetMetaData().withGridColumns(12).withPermissionRules(permissionRules()));
       }
       return (widgets);
+   }
+
+   /*******************************************************************************
+    ** Payload-free interaction audit. The unique delivery key arbitrates retries.
+    *******************************************************************************/
+   private static QTableMetaData interaction(SlackQBitConfig config)
+   {
+      return (base(config, INTERACTION, "Interactions")
+         .withField(field("workspaceId", QFieldType.INTEGER).withPossibleValueSourceName(WORKSPACE))
+         .withField(field("messageId", QFieldType.INTEGER).withPossibleValueSourceName(MESSAGE))
+         .withField(field("teamId", QFieldType.STRING).withMaxLength(500))
+         .withField(field("slackUserId", QFieldType.STRING).withMaxLength(500))
+         .withField(field("userId", QFieldType.STRING).withMaxLength(500))
+         .withField(field("actionName", QFieldType.STRING).withMaxLength(500))
+         .withField(field("deliveryKey", QFieldType.STRING).withMaxLength(500))
+         .withField(field("error", QFieldType.STRING).withMaxLength(500))
+         .withField(field("outcome", QFieldType.STRING).withMaxLength(500).withPossibleValueSourceName("slack_interaction_outcome"))
+         .withField(field("completedDate", QFieldType.DATE_TIME))
+         .withUniqueKey(new UniqueKey("deliveryKey"))
+         .withSection(SectionFactory.defaultT1("id", "workspaceId", "messageId", "userId", "actionName", "outcome"))
+         .withSection(SectionFactory.defaultT2("teamId", "slackUserId", "error", "completedDate", "deliveryKey"))
+         .withSection(SectionFactory.defaultT3("createDate", "modifyDate")));
    }
 }
