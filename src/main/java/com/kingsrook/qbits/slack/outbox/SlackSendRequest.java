@@ -32,6 +32,11 @@ import com.kingsrook.qbits.slack.metadata.SlackEnums;
  *******************************************************************************/
 public class SlackSendRequest
 {
+   private String templateName = null;
+   private java.util.Map<String, java.io.Serializable> variables = java.util.Map.of();
+   private String contentClassification = null;
+   private String title = null;
+   private String link = null;
    private String            ownerUserId;
    private String            tenantKey;
    private String            to;
@@ -307,6 +312,91 @@ public class SlackSendRequest
    public SlackSendRequest withSenderName(String senderName)
    {
       this.senderName = senderName;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Getter for templateName.
+    *******************************************************************************/
+   public String getTemplateName()
+   {
+      return (templateName);
+   }
+
+   /*******************************************************************************
+    ** Fluent setter for templateName.
+    *******************************************************************************/
+   public SlackSendRequest withTemplateName(String value)
+   {
+      templateName = value;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Getter for variables.
+    *******************************************************************************/
+   public java.util.Map<String, java.io.Serializable> getVariables()
+   {
+      return (variables);
+   }
+
+   /*******************************************************************************
+    ** Fluent setter for variables.
+    *******************************************************************************/
+   public SlackSendRequest withVariables(java.util.Map<String, java.io.Serializable> value)
+   {
+      variables = value;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Getter for contentClassification.
+    *******************************************************************************/
+   public String getContentClassification()
+   {
+      return (contentClassification);
+   }
+
+   /*******************************************************************************
+    ** Fluent setter for contentClassification.
+    *******************************************************************************/
+   public SlackSendRequest withContentClassification(String value)
+   {
+      contentClassification = value;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Getter for title.
+    *******************************************************************************/
+   public String getTitle()
+   {
+      return (title);
+   }
+
+   /*******************************************************************************
+    ** Fluent setter for title.
+    *******************************************************************************/
+   public SlackSendRequest withTitle(String value)
+   {
+      title = value;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Getter for link.
+    *******************************************************************************/
+   public String getLink()
+   {
+      return (link);
+   }
+
+   /*******************************************************************************
+    ** Fluent setter for link.
+    *******************************************************************************/
+   public SlackSendRequest withLink(String value)
+   {
+      link = value;
       return (this);
    }
 }

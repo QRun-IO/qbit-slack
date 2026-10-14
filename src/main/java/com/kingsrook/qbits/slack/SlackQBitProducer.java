@@ -124,6 +124,13 @@ public class SlackQBitProducer implements QBitMetaDataProducer<SlackQBitConfig>
          {
             table = qBitConfig.getTableMetaDataCustomizer().customizeMetaData(qInstance, table);
          }
+         if(SlackTables.TEMPLATE.equals(table.getName()))
+         {
+            table.withCustomizer(com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers.PRE_INSERT_RECORD,
+               new com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference(com.kingsrook.qbits.slack.template.SlackTemplateCustomizer.class));
+            table.withCustomizer(com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers.PRE_UPDATE_RECORD,
+               new com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference(com.kingsrook.qbits.slack.template.SlackTemplateCustomizer.class));
+         }
          table.setSourceQBitName(getQBitMetaData().getName());
          output.add(table);
       }
@@ -140,6 +147,16 @@ public class SlackQBitProducer implements QBitMetaDataProducer<SlackQBitConfig>
       output.add(new SlackOutboxMessagingProviderMetaData().withName(qBitConfig.getBridgeProviderName()));
 
       output.addSelfToInstance(qInstance);
+      com.kingsrook.qbits.slack.oauth.SlackOAuthRouteProvider.register(qInstance);
+      try
+      {
+         Class.forName("com.kingsrook.qqq.middleware.health.model.metadata.HealthCheckMetaData");
+         com.kingsrook.qbits.slack.readiness.SlackHealth.register(qInstance);
+      }
+      catch(ClassNotFoundException e)
+      {
+         // Optional health module is absent in this host.
+      }
       return (new MetaDataProducerMultiOutput());
    }
 

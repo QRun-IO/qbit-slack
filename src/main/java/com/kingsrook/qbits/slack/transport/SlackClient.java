@@ -61,6 +61,41 @@ public class SlackClient
 
 
    /*******************************************************************************
+    ** OAuth exchange uses form encoding; secrets never enter a URL.
+    *******************************************************************************/
+   public SlackResponse oauthAccess(String clientId, String clientSecret, String code, String redirectUri)
+   {
+      return (form("oauth.v2.access", Map.of("client_id", clientId, "client_secret", clientSecret, "code", code, "redirect_uri", redirectUri)));
+   }
+
+   /*******************************************************************************
+    ** Revoke only the selected user's token.
+    *******************************************************************************/
+   public SlackResponse authRevoke(String token)
+   {
+      return (post(token, "auth.revoke", new JSONObject()));
+   }
+
+   /*******************************************************************************
+    ** Remove the selected workspace's installation.
+    *******************************************************************************/
+   public SlackResponse appsUninstall(String token, String clientId, String clientSecret)
+   {
+      return (form("apps.uninstall", Map.of("token", token, "client_id", clientId, "client_secret", clientSecret)));
+   }
+
+   /*******************************************************************************
+    ** Credentials are sent in a form body, never in query strings.
+    *******************************************************************************/
+   private SlackResponse form(String method, Map<String, String> values)
+   {
+      String body = values.entrySet().stream().map(e -> URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8) + "="
+         + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8)).collect(java.util.stream.Collectors.joining("&"));
+      return (send(HttpRequest.newBuilder().uri(URI.create(baseUrl + "/" + method)).timeout(requestTimeout)
+         .header("Content-Type", "application/x-www-form-urlencoded").POST(HttpRequest.BodyPublishers.ofString(body))));
+   }
+
+   /*******************************************************************************
     ** Constructor: the base URL and the connect and request timeouts come from
     ** the config.
     *******************************************************************************/
