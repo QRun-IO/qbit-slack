@@ -24,14 +24,32 @@ package com.kingsrook.qbits.slack.api;
  ** Immutable enqueue request. Fluent withX methods return a new request.
  ** QUEUED means durable outbox storage, never synchronous delivery.
  *******************************************************************************/
-public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId, String text, String blocksJson, String templateName, java.util.Map<String, java.io.Serializable> variables, String idempotencyKey, String category, String postAs, Integer threadOfMessageId, String linkedTableName, String linkedRecordId, String senderName, String contentClassification, String title, String link)
+public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId, String text, String blocksJson, String templateName, java.util.Map<String, java.io.Serializable> variables, String idempotencyKey, String category, String postAs, Integer threadOfMessageId, String linkedTableName, String linkedRecordId, String senderName, String contentClassification, String title, String link, java.util.List<String> actions)
 {
+   /*******************************************************************************
+    ** Compatibility constructor for requests without buttons.
+    *******************************************************************************/
+   public SlackApiRequest(String ownerUserId, String to, Integer workspaceId, String text, String blocksJson, String templateName, java.util.Map<String, java.io.Serializable> variables, String idempotencyKey, String category, String postAs, Integer threadOfMessageId, String linkedTableName, String linkedRecordId, String senderName, String contentClassification, String title, String link)
+   {
+      this(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link, java.util.List.of());
+   }
+
+   /*******************************************************************************
+    ** Add a registered button to the immutable request.
+    *******************************************************************************/
+   public SlackApiRequest withAction(String name)
+   {
+      java.util.List<String> copy = new java.util.ArrayList<>(actions);
+      copy.add(name);
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link, copy));
+   }
+
    /*******************************************************************************
     ** Empty request for fluent construction.
     *******************************************************************************/
    public SlackApiRequest()
    {
-      this(null, null, null, null, null, null, java.util.Map.of(), null, null, null, null, null, null, null, null, null, null);
+      this(null, null, null, null, null, null, java.util.Map.of(), null, null, null, null, null, null, null, null, null, null, java.util.List.of());
    }
 
    /*******************************************************************************
@@ -39,6 +57,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest
    {
+      actions = actions == null ? java.util.List.of() : java.util.List.copyOf(actions);
       java.util.Map<String, java.io.Serializable> copy = new java.util.LinkedHashMap<>();
       if(variables != null)
       {
@@ -52,7 +71,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withOwnerUserId(String value)
    {
-      return (new SlackApiRequest(value, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link));
+      return (new SlackApiRequest(value, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link, actions));
    }
 
    /*******************************************************************************
@@ -60,7 +79,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withTo(String value)
    {
-      return (new SlackApiRequest(ownerUserId, value, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link));
+      return (new SlackApiRequest(ownerUserId, value, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link, actions));
    }
 
    /*******************************************************************************
@@ -68,7 +87,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withWorkspaceId(Integer value)
    {
-      return (new SlackApiRequest(ownerUserId, to, value, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link));
+      return (new SlackApiRequest(ownerUserId, to, value, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link, actions));
    }
 
    /*******************************************************************************
@@ -76,7 +95,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withText(String value)
    {
-      return (new SlackApiRequest(ownerUserId, to, workspaceId, value, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link));
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, value, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link, actions));
    }
 
    /*******************************************************************************
@@ -84,7 +103,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withBlocksJson(String value)
    {
-      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, value, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link));
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, value, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link, actions));
    }
 
    /*******************************************************************************
@@ -92,7 +111,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withTemplateName(String value)
    {
-      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, value, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link));
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, value, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link, actions));
    }
 
    /*******************************************************************************
@@ -100,7 +119,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withVariables(java.util.Map<String, java.io.Serializable> value)
    {
-      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, value, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link));
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, value, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link, actions));
    }
 
    /*******************************************************************************
@@ -108,7 +127,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withIdempotencyKey(String value)
    {
-      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, value, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link));
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, value, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link, actions));
    }
 
    /*******************************************************************************
@@ -116,7 +135,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withCategory(String value)
    {
-      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, value, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link));
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, value, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link, actions));
    }
 
    /*******************************************************************************
@@ -124,7 +143,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withPostAs(String value)
    {
-      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, value, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link));
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, value, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, link, actions));
    }
 
    /*******************************************************************************
@@ -132,7 +151,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withThreadOfMessageId(Integer value)
    {
-      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, value, linkedTableName, linkedRecordId, senderName, contentClassification, title, link));
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, value, linkedTableName, linkedRecordId, senderName, contentClassification, title, link, actions));
    }
 
    /*******************************************************************************
@@ -140,7 +159,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withLinkedTableName(String value)
    {
-      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, value, linkedRecordId, senderName, contentClassification, title, link));
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, value, linkedRecordId, senderName, contentClassification, title, link, actions));
    }
 
    /*******************************************************************************
@@ -148,7 +167,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withLinkedRecordId(String value)
    {
-      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, value, senderName, contentClassification, title, link));
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, value, senderName, contentClassification, title, link, actions));
    }
 
    /*******************************************************************************
@@ -156,7 +175,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withSenderName(String value)
    {
-      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, value, contentClassification, title, link));
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, value, contentClassification, title, link, actions));
    }
 
    /*******************************************************************************
@@ -164,7 +183,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withContentClassification(String value)
    {
-      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, value, title, link));
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, value, title, link, actions));
    }
 
    /*******************************************************************************
@@ -172,7 +191,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withTitle(String value)
    {
-      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, value, link));
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, value, link, actions));
    }
 
    /*******************************************************************************
@@ -180,7 +199,7 @@ public record SlackApiRequest(String ownerUserId, String to, Integer workspaceId
     *******************************************************************************/
    public SlackApiRequest withLink(String value)
    {
-      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, value));
+      return (new SlackApiRequest(ownerUserId, to, workspaceId, text, blocksJson, templateName, variables, idempotencyKey, category, postAs, threadOfMessageId, linkedTableName, linkedRecordId, senderName, contentClassification, title, value, actions));
    }
 
    /*******************************************************************************

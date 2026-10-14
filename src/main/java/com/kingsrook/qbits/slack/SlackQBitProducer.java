@@ -152,6 +152,7 @@ public class SlackQBitProducer implements QBitMetaDataProducer<SlackQBitConfig>
       com.kingsrook.qbits.slack.app.SlackApp.widgets().forEach(qInstance::addWidget);
       com.kingsrook.qbits.slack.preferences.SlackPreferencesAdapter.register(qInstance);
       com.kingsrook.qbits.slack.oauth.SlackOAuthRouteProvider.register(qInstance);
+      com.kingsrook.qbits.slack.interactivity.SlackActions.registerBuiltIns(qInstance, getQBitConfig());
       try
       {
          Class.forName("com.kingsrook.qqq.middleware.health.model.metadata.HealthCheckMetaData");
