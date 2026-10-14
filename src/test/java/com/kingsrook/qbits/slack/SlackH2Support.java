@@ -170,6 +170,10 @@ public final class SlackH2Support
    {
       instance.setEnforcePermissionsInCoreActions(true);
       QSession session = new QSession().withPermissions("slack.hasAccess", "slack.view");
+      if(allUsers)
+      {
+         session.withPermissions("slack.admin");
+      }
       SlackSecurity.applyToSession(session, userId, allUsers);
       if(tenantId != null)
       {
@@ -195,6 +199,22 @@ public final class SlackH2Support
    }
 
 
+
+   /*******************************************************************************
+    ** Deterministic fixture dates after core applies its current-time behaviors.
+    *******************************************************************************/
+   public static void messageDates(Integer id, java.time.Instant at) throws Exception
+   {
+      RDBMSBackendMetaData backend = (RDBMSBackendMetaData) QContext.getQInstance().getBackend("rdbms");
+      try(Connection connection = new ConnectionManager().getConnection(backend);
+         var statement = connection.prepareStatement("UPDATE slack_message SET create_date = ?, modify_date = ? WHERE id = ?"))
+      {
+         statement.setTimestamp(1, java.sql.Timestamp.from(at));
+         statement.setTimestamp(2, java.sql.Timestamp.from(at));
+         statement.setInt(3, id);
+         statement.executeUpdate();
+      }
+   }
 
    /*******************************************************************************
     ** Query a table as the current context.

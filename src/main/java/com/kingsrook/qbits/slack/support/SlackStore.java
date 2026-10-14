@@ -125,6 +125,11 @@ public final class SlackStore
     *******************************************************************************/
    public static List<QRecord> queryAsCurrent(String table, QQueryFilter filter) throws QException
    {
+      if(com.kingsrook.qbits.slack.metadata.SlackTables.WORKSPACE.equals(table))
+      {
+         return (com.kingsrook.qbits.slack.permissions.SlackPermissionChecker.workspaceLookup(
+            () -> new QueryAction().execute(new QueryInput(table).withFilter(filter)).getRecords()));
+      }
       return (new QueryAction().execute(new QueryInput(table).withFilter(filter)).getRecords());
    }
 

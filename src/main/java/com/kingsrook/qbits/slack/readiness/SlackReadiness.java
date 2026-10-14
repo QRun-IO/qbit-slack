@@ -49,6 +49,18 @@ public final class SlackReadiness
 {
    private static final Map<QInstance, SlackApiReadiness> STORED = Collections.synchronizedMap(new WeakHashMap<>());
 
+   private static final Map<QInstance, Map<Integer, SlackApiReadiness>> WORKSPACES = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+   /*******************************************************************************
+    ** Last actual checks, scoped to this instance; never invent a successful check.
+    *******************************************************************************/
+   public static SlackApiReadiness workspaceSnapshot(Integer id)
+   {
+      return (WORKSPACES.getOrDefault(QContext.getQInstance(), Map.of()).getOrDefault(id,
+         new SlackApiReadiness(false, List.of(new SlackApiReadinessCheck("workspace:" + id, "UNKNOWN", "Checks have not run since startup"),
+            new SlackApiReadinessCheck("registeredChannels", "UNKNOWN", "Checks have not run since startup")))));
+   }
+
    /*******************************************************************************
     ** Utility class.
     *******************************************************************************/
@@ -146,6 +158,7 @@ public final class SlackReadiness
          good && !optionalScopes ? "Workspace ready; optional scopes are missing" : "Workspace identity and required scopes"));
       checks.add(check("registeredChannels", channels, "Enabled channels and bot membership"));
       SlackApiReadiness result = result(checks);
+      WORKSPACES.computeIfAbsent(QContext.getQInstance(), key -> new java.util.concurrent.ConcurrentHashMap<>()).put(id, result);
       SlackStore.update(SlackTables.WORKSPACE, new QRecord().withValue("id", id).withValue("readinessStatus", result.ready() ? "OK" : "FAIL")
          .withValue("readinessCheckedAt", SlackRuntime.clock().instant()).withValue("readinessSummary", result.ready() ? "Workspace ready" : "Workspace needs attention"), null);
       return (result);

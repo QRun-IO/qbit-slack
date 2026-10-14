@@ -103,7 +103,7 @@ class SlackProviderTest
    @Test
    void testSendMessageActionQueuesRowForSessionUser() throws Exception
    {
-      env.asOwner("userA");
+      env.asOwner("userA").withPermissions("slack.message.body");
       SendMessageOutput output = new SendMessageAction().execute(input(new Party().withAddress("me")));
       assertThat(output).isNotNull();
 

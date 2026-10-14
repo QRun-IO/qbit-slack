@@ -57,6 +57,9 @@ import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwith
  *******************************************************************************/
 public final class SlackProcesses
 {
+   public static final String CONNECT = "slack_connect";
+   public static final String INSTALL = "slack_install";
+   public static final String TEST_MESSAGE = "slack_test_message";
    public static final String DISCONNECT = "slack_disconnect";
    public static final String UNINSTALL = "slack_uninstall";
    public static final String READINESS = "slack_check_readiness";
@@ -96,11 +99,39 @@ public final class SlackProcesses
          readiness.withSchedule(new QScheduleMetaData().withSchedulerName(config.getSchedulerName())
             .withRepeatSeconds(config.getReadinessIntervalMinutes() * 60).withInitialDelaySeconds(1));
       }
-      return (List.of(dispatch, readiness, action(DISCONNECT, "Disconnect", SlackTables.CONNECTION),
+      return (List.of(dispatch, readiness, connectAction(CONNECT, "Connect Slack"), connectAction(INSTALL, "Install for my organization"),
+         action(TEST_MESSAGE, "Send me a test message", SlackTables.CONNECTION).withMinInputRecords(1).withMaxInputRecords(1), action(DISCONNECT, "Disconnect", SlackTables.CONNECTION),
          action(UNINSTALL, "Uninstall", SlackTables.WORKSPACE), action(READINESS, "Check readiness", SlackTables.WORKSPACE)));
    }
 
 
+
+   /*******************************************************************************
+    ** OAuth starts without requiring an existing connection or selected record.
+    *******************************************************************************/
+   private static QProcessMetaData connectAction(String name, String label)
+   {
+      return (new QProcessMetaData().withName(name).withLabel(label).withTableName(SlackTables.CONNECTION)
+         .withMinInputRecords(0).withPermissionRules(SlackTables.permissionRules())
+         .withStep(new QBackendStepMetaData().withName("authorize").withCode(new QCodeReference(ConnectStep.class)))
+         .withStep(new com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData().withName("result").withLabel("Connect Slack")
+            .withViewField(new com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData("authorizeUrl", com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType.STRING).withLabel("Open this Slack authorization URL"))));
+   }
+
+   /*******************************************************************************
+    ** Return the authorize URL through the standard process UI API.
+    *******************************************************************************/
+   public static class ConnectStep implements BackendStep
+   {
+      /*******************************************************************************
+       ** No remote mutation happens until the user approves at Slack.
+       *******************************************************************************/
+      @Override
+      public void run(RunBackendStepInput input, RunBackendStepOutput output)
+      {
+         output.addValue("authorizeUrl", com.kingsrook.qbits.slack.preferences.SlackPreferences.connect(INSTALL.equals(input.getProcessName())));
+      }
+   }
 
    /*******************************************************************************
     ** The scheduler's entry point.
@@ -164,7 +195,9 @@ public final class SlackProcesses
          var session = com.kingsrook.qqq.backend.core.context.QContext.getQSession();
          for(QRecord row : input.getRecords())
          {
-            boolean permitted = session.hasPermission("slack.admin") || DISCONNECT.equals(input.getProcessName())
+            boolean permitted = TEST_MESSAGE.equals(input.getProcessName())
+               ? session.hasPermission("slack.send") && session.getUser().getIdReference().equals(row.getValueString("userId"))
+               : session.hasPermission("slack.admin") || DISCONNECT.equals(input.getProcessName())
                && session.hasPermission("slack.connect") && session.getUser().getIdReference().equals(row.getValueString("userId"));
             lines.add(new ProcessSummaryLine(permitted ? Status.OK : Status.INFO, 1, permitted ? "Record will be processed" : "Record not permitted"));
             if(permitted)
@@ -201,6 +234,15 @@ public final class SlackProcesses
          {
             switch(input.getProcessName())
             {
+               case TEST_MESSAGE ->
+               {
+                  var result = com.kingsrook.qbits.slack.preferences.SlackPreferences.testMessage(row.getValueInteger("id"));
+                  if(result.status() != com.kingsrook.qbits.slack.outbox.SlackSendResult.Status.QUEUED)
+                  {
+                     throw (new QException("Slack test message could not be queued: " + String.join("; ", result.reasons())));
+                  }
+                  output.addValue("messageId", result.messageId());
+               }
                case DISCONNECT -> SlackConnect.disconnect(row.getValueInteger("id"));
                case UNINSTALL -> SlackConnect.uninstall(row.getValueInteger("id"));
                case READINESS ->

@@ -49,6 +49,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
  *******************************************************************************/
 public final class SlackSecurity
 {
+   public static final String KEY_BODY_ACCESS = "slack_body_access";
    public static final String KEY_USER            = "slack_user";
    public static final String KEY_USER_ALL_ACCESS = "slack_user_all_access";
    public static final String KEY_TOKEN_ACCESS    = "slack_token_access";
@@ -77,7 +78,8 @@ public final class SlackSecurity
    {
       return (List.of(
          new QSecurityKeyType().withName(KEY_USER).withAllAccessKeyName(KEY_USER_ALL_ACCESS),
-         new QSecurityKeyType().withName(KEY_TOKEN_ACCESS)));
+         new QSecurityKeyType().withName(KEY_TOKEN_ACCESS),
+         new QSecurityKeyType().withName(KEY_BODY_ACCESS)));
    }
 
 
@@ -132,6 +134,7 @@ public final class SlackSecurity
          return;
       }
 
+      applyBodyPermission(session);
       if(session.getSecurityKeyValues() != null)
       {
          session.getSecurityKeyValues().remove(KEY_USER);
@@ -149,6 +152,34 @@ public final class SlackSecurity
    }
 
 
+
+   /*******************************************************************************
+    ** RC.6 field locks use security keys; derive this key from the body grant.
+    *******************************************************************************/
+   public static void applyBodyPermission(QSession session)
+   {
+      if(session == null)
+      {
+         return;
+      }
+      if(session.getSecurityKeyValues() != null)
+      {
+         session.getSecurityKeyValues().remove(KEY_BODY_ACCESS);
+      }
+      if(session.hasPermission("slack.message.body"))
+      {
+         session.withSecurityKeyValue(KEY_BODY_ACCESS, true);
+      }
+   }
+
+   /*******************************************************************************
+    ** Hide body values and prevent filtering, sorting or exporting without access.
+    *******************************************************************************/
+   public static FieldSecurityLock bodyFieldLock()
+   {
+      return (new FieldSecurityLock().withSecurityKeyType(KEY_BODY_ACCESS)
+         .withDefaultBehavior(FieldSecurityLock.Behavior.DENY).withOverrideValues(List.of(true)));
+   }
 
    /*******************************************************************************
     ** The value the session holds for the owner key, or null.
