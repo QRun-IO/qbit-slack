@@ -1,42 +1,48 @@
-# QBit Template: Extension
+# QBit Slack
 
-Template repository for creating QQQ Extension QBits - infrastructure extensions, customizers, and action handlers.
+Slack for a QQQ system. Users connect their own Slack accounts, and organization admins install the
+app for their own workspace. The qbit registers a core messaging provider (`slack`) and a delivery
+destination, so any process, scheduled job, report or export can send to a Slack DM or channel through
+core alone. Every message is authorized as its owning user at send time, so the qbit is safe for
+deployments with many tenants. Delivery uses a durable outbox with Slack rate-limit handling, and
+classified PHI and PII never reach Slack.
 
-## What is an Extension QBit?
+Design: [docs/DESIGN.md](docs/DESIGN.md).
 
-Extension QBits extend or enhance how QQQ operates at the infrastructure/framework level. They provide:
-- New backend implementations
-- Authentication mechanisms
-- Audit capabilities
-- Table customizers
-- Action handlers
+## Requirements
 
-## Quick Start
+- Java 21
+- QQQ 4.1 (currently built against 4.1.0-RC.6)
+- A Slack app created from [docs/slack-app-manifest.yaml](docs/slack-app-manifest.yaml)
 
-Requires **Java 21**, **Maven 3.8+**, and QQQ **4.0.0**. Create your repository, customize its Maven coordinates and Java package/classes, implement the table customizer, then run `mvn clean verify`. See [Getting Started](docs/00-getting-started.md).
+## Install
 
-## Structure
-
+```java
+new SlackQBitProducer()
+   .withQBitConfig(new SlackQBitConfig()
+      .withBackendName("rdbms")
+      .withSchedulerName("scheduler"))
+   .produce(qInstance);
 ```
-src/main/java/com/kingsrook/qbits/example/
-├── ExampleExtensionQBitConfig.java    # Configuration
-├── ExampleExtensionQBitProducer.java  # Entry point
-└── customizers/
-    └── ExampleTableCustomizer.java    # Table customization
+
+## Tables, permissions and configuration
+
+See [docs/DESIGN.md](docs/DESIGN.md), sections 3 to 14. The tables are prefixed `slack_` and the
+permissions `slack.`. Secrets are environment-variable names only: `SLACK_CLIENT_ID`,
+`SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET` and `SLACK_TOKEN_KEY`.
+
+## Adopting in another app
+
+Send with core `SendMessageAction` and the provider name `slack`, or deliver output to the `slack`
+destination. Don't import this qbit's internal packages; `com.kingsrook.qbits.slack.api` is the only
+public surface.
+
+## Build
+
+```bash
+./mvnw verify
 ```
-
-## Key Characteristics
-
-- **No QAppSection** - Pure infrastructure
-- **No user-facing tables** (or minimal operational)
-- **Wraps existing tables/processes** with new behavior
-- **Validates dependencies** on other QQQ components
-
-## Documentation
-
-- [Getting Started](docs/00-getting-started.md)
-- [Extension Patterns](docs/01-extension-patterns.md)
 
 ## License
 
-See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
