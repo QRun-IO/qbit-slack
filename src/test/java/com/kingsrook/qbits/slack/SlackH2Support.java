@@ -40,6 +40,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.scheduleing.simple.SimpleSchedulerMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
@@ -124,6 +125,7 @@ public final class SlackH2Support
       QInstance instance = new QInstance();
       instance.withInstanceDefaultAuthentication(new QAuthenticationMetaData().withName("anonymous").withType(QAuthenticationType.FULLY_ANONYMOUS));
       instance.addBackend(backend);
+      instance.addScheduler(new SimpleSchedulerMetaData().withName("scheduler"));
       instance.addSecurityKeyType(new QSecurityKeyType().withName(TENANT_KEY).withAllAccessKeyName(TENANT_KEY + "_all_access"));
 
       SlackQBitConfig config = new SlackQBitConfig().withBackendName("rdbms").withSchedulerName("scheduler");
