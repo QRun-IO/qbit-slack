@@ -21,6 +21,16 @@
 package com.kingsrook.qbits.slack;
 
 
+import java.util.ArrayList;
+import java.util.List;
+import com.kingsrook.qbits.slack.bridge.SlackOutboxMessagingProviderMetaData;
+import com.kingsrook.qbits.slack.delivery.SlackAlerts;
+import com.kingsrook.qbits.slack.metadata.SlackTables;
+import com.kingsrook.qbits.slack.processes.SlackProcesses;
+import com.kingsrook.qbits.slack.security.SlackSecurity;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaDataProducer;
 
@@ -71,7 +81,66 @@ public class SlackQBitProducer implements QBitMetaDataProducer<SlackQBitConfig>
          .withGroupId(GROUP_ID)
          .withArtifactId(ARTIFACT_ID)
          .withVersion(VERSION)
-         .withNamespace(namespace));
+         .withNamespace(namespace)
+         .withConfig(qBitConfig));
+   }
+
+
+
+   /*******************************************************************************
+    ** A producer found by package scanning has no config: skip it.
+    *******************************************************************************/
+   @Override
+   public boolean isEnabled()
+   {
+      return (qBitConfig != null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate the config, then produce the security key types, possible-value
+    ** sources, tables, relations and child-list widgets (docs/DESIGN.md 14.1).
+    *******************************************************************************/
+   @Override
+   public MetaDataProducerMultiOutput produce(QInstance qInstance) throws QException
+   {
+      List<String> errors = new ArrayList<>();
+      qBitConfig.validate(qInstance, errors);
+      if(!errors.isEmpty())
+      {
+         throw (new QException("Slack qbit configuration is invalid: " + String.join("; ", errors)));
+      }
+
+      qInstance.addQBit(getQBitMetaData());
+
+      MetaDataProducerMultiOutput output = new MetaDataProducerMultiOutput();
+      SlackSecurity.buildSecurityKeyTypes().forEach(output::add);
+      SlackTables.possibleValueSources().forEach(output::add);
+
+      for(com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData table : SlackTables.tables(qBitConfig))
+      {
+         if(qBitConfig.getTableMetaDataCustomizer() != null)
+         {
+            table = qBitConfig.getTableMetaDataCustomizer().customizeMetaData(qInstance, table);
+         }
+         table.setSourceQBitName(getQBitMetaData().getName());
+         output.add(table);
+      }
+
+      SlackTables.joins().forEach(output::add);
+      SlackTables.childWidgets().forEach(output::add);
+
+      SlackProcesses.processes(qBitConfig).forEach(process ->
+      {
+         process.setSourceQBitName(getQBitMetaData().getName());
+         output.add(process);
+      });
+      SlackAlerts.types().forEach(output::add);
+      output.add(new SlackOutboxMessagingProviderMetaData().withName(qBitConfig.getBridgeProviderName()));
+
+      output.addSelfToInstance(qInstance);
+      return (new MetaDataProducerMultiOutput());
    }
 
 
