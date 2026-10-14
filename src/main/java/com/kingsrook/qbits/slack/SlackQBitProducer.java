@@ -162,6 +162,7 @@ public class SlackQBitProducer implements QBitMetaDataProducer<SlackQBitConfig>
       {
          // Optional health module is absent in this host.
       }
+      com.kingsrook.qbits.slack.metadata.SlackHelp.apply(qInstance);
       return (new MetaDataProducerMultiOutput());
    }
 

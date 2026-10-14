@@ -294,6 +294,17 @@ public class SlackClient
 
 
    /*******************************************************************************
+    ** usergroups.list: the workspace's user groups (id, handle), for resolving
+    ** a registered group's @handle. Needs the optional usergroups:read scope.
+    *******************************************************************************/
+   public SlackResponse usergroupsList(String token)
+   {
+      return (get(token, "usergroups.list", new LinkedHashMap<>()));
+   }
+
+
+
+   /*******************************************************************************
     ** One page of users.conversations: the channels the token's user is in.
     *******************************************************************************/
    public SlackResponse usersConversations(String token, String cursor)

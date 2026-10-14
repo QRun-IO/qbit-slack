@@ -405,7 +405,8 @@ public class SlackAuthorizer
             {
                return (SlackAuthorization.refuse(SlackRefusal.Reason.NOT_FOUND, target.name + " isn't linked to a Slack user group yet"));
             }
-            mention = "<!subteam^" + row.getValueString("slackUsergroupId") + "> ";
+            String handle = row.getValueString("handle");
+            mention = "<!subteam^" + row.getValueString("slackUsergroupId") + (handle != null && handle.matches("@?[A-Za-z0-9._-]+") ? "|@" + handle.replaceFirst("^@", "") : "") + "> ";
          }
       }
 

@@ -130,6 +130,7 @@ public final class SlackReadiness
       List<SlackApiReadinessCheck> checks = new ArrayList<>();
       boolean good = false;
       boolean channels = true;
+      boolean channelsUnknown = false;
       boolean optionalScopes = false;
       try
       {
@@ -143,10 +144,22 @@ public final class SlackReadiness
          {
             if(Boolean.TRUE.equals(channel.getValueBoolean("enabled")))
             {
-               var info = SlackRuntime.client(config).conversationsInfo(token, channel.getValueString("slackChannelId"));
-               var json = info.getJson() == null ? null : info.getJson().optJSONObject("channel");
-               channels &= info.isOk() && json != null && !json.optBoolean("is_archived", true) && json.optBoolean("is_member", false);
+               ChannelCheck outcome = checkChannel(config, token, channel);
+               if(outcome == ChannelCheck.UNKNOWN)
+               {
+                  //////////////////////////////////////////////////////////////////////
+                  // Slack did not give a definitive answer (rate limit, outage, auth) //
+                  // so stop checking this workspace and leave the rows as they were   //
+                  //////////////////////////////////////////////////////////////////////
+                  channelsUnknown = true;
+                  break;
+               }
+               channels &= outcome == ChannelCheck.USABLE;
             }
+         }
+         if(response.getScopes() != null && List.of(response.getScopes().split(",")).contains("usergroups:read"))
+         {
+            syncUserGroups(config, token, id);
          }
       }
       catch(Exception e)
@@ -156,12 +169,104 @@ public final class SlackReadiness
       }
       checks.add(new SlackApiReadinessCheck("workspace:" + id, good ? optionalScopes ? "READY" : "WARN" : "ERROR",
          good && !optionalScopes ? "Workspace ready; optional scopes are missing" : "Workspace identity and required scopes"));
-      checks.add(check("registeredChannels", channels, "Enabled channels and bot membership"));
+      checks.add(channelsUnknown && channels ? new SlackApiReadinessCheck("registeredChannels", "WARN", "Slack could not confirm the channels; they will be checked again")
+         : check("registeredChannels", channels, "Enabled channels and bot membership"));
       SlackApiReadiness result = result(checks);
       WORKSPACES.computeIfAbsent(QContext.getQInstance(), key -> new java.util.concurrent.ConcurrentHashMap<>()).put(id, result);
       SlackStore.update(SlackTables.WORKSPACE, new QRecord().withValue("id", id).withValue("readinessStatus", result.ready() ? "OK" : "FAIL")
          .withValue("readinessCheckedAt", SlackRuntime.clock().instant()).withValue("readinessSummary", result.ready() ? "Workspace ready" : "Workspace needs attention"), null);
       return (result);
+   }
+
+   /*******************************************************************************
+    ** What a channel check found. UNKNOWN means Slack gave no definitive answer
+    ** (rate limit, timeout, outage, invalid auth), so nothing was written.
+    *******************************************************************************/
+   public enum ChannelCheck
+   {
+      USABLE, NEEDS_ATTENTION, UNKNOWN
+   }
+
+   /*******************************************************************************
+    ** Check one registered channel against Slack and, on a definitive answer,
+    ** write what Slack says back to its row (name, privacy, bot membership,
+    ** archived, purpose, checked time). Definitive: the channel came back, or
+    ** Slack said channel_not_found or not_in_channel (recorded as bot not a
+    ** member). Anything else leaves the row alone.
+    *******************************************************************************/
+   static ChannelCheck checkChannel(SlackQBitConfig config, String token, QRecord channel) throws QException
+   {
+      var     info = SlackRuntime.client(config).conversationsInfo(token, channel.getValueString("slackChannelId"));
+      var     json = info.getJson() == null ? null : info.getJson().optJSONObject("channel");
+      boolean ok   = info.isOk() && json != null;
+      boolean gone = !info.isOk() && info.getRetryAfterSeconds() == null && info.getHttpStatus() > 0 && info.getHttpStatus() < 500
+         && ("channel_not_found".equals(info.getError()) || "not_in_channel".equals(info.getError()));
+      if(!ok && !gone)
+      {
+         return (ChannelCheck.UNKNOWN);
+      }
+      QRecord update = new QRecord().withValue("id", channel.getValueInteger("id")).withValue("checkedAt", SlackRuntime.clock().instant());
+      if(ok)
+      {
+         String purpose = json.optJSONObject("purpose") == null ? "" : json.optJSONObject("purpose").optString("value", "");
+         String topic   = json.optJSONObject("topic") == null ? "" : json.optJSONObject("topic").optString("value", "");
+         update.withValue("isPrivate", json.optBoolean("is_private", false)).withValue("isArchived", json.optBoolean("is_archived", false))
+            .withValue("botIsMember", json.optBoolean("is_member", false)).withValue("description", purpose.isBlank() ? topic.isBlank() ? null : topic : purpose);
+         if(!json.optString("name", "").isBlank())
+         {
+            update.withValue("slackChannelName", json.getString("name"));
+         }
+      }
+      else
+      {
+         update.withValue("botIsMember", false);
+      }
+      SlackStore.update(SlackTables.CHANNEL, update, null);
+      return (ok && !json.optBoolean("is_archived", false) && json.optBoolean("is_member", false) ? ChannelCheck.USABLE : ChannelCheck.NEEDS_ATTENTION);
+   }
+
+   /*******************************************************************************
+    ** The "Check channels" action: check the given registered channel with its
+    ** workspace bot token, as the signed-in administrator. A token problem is
+    ** thrown so the action can report it for this row only.
+    *******************************************************************************/
+   public static ChannelCheck channel(Integer id) throws QException
+   {
+      QRecord channel = SlackConnect.visible(SlackTables.CHANNEL, id);
+      SlackQBitConfig config = SlackRuntime.config();
+      return (checkChannel(config, SlackTokens.botToken(config, channel.getValueInteger("workspaceId")), channel));
+   }
+
+   /*******************************************************************************
+    ** Resolve each enabled registered user group's @handle from usergroups.list
+    ** and keep it on the row, so mentions show the handle. Best effort: a
+    ** failure leaves the rows as they were.
+    *******************************************************************************/
+   static void syncUserGroups(SlackQBitConfig config, String token, Integer workspaceId) throws QException
+   {
+      var response = SlackRuntime.client(config).usergroupsList(token);
+      var array    = response.isOk() && response.getJson() != null ? response.getJson().optJSONArray("usergroups") : null;
+      if(array == null)
+      {
+         return;
+      }
+      Map<String, String> handles = new java.util.HashMap<>();
+      for(int i = 0; i < array.length(); i++)
+      {
+         var group = array.optJSONObject(i);
+         if(group != null && !group.optString("id", "").isBlank())
+         {
+            handles.put(group.getString("id"), group.optString("handle", ""));
+         }
+      }
+      for(QRecord row : SlackStore.queryAsCurrent(SlackTables.USER_GROUP, SlackStore.equal("workspaceId", workspaceId)))
+      {
+         String handle = handles.get(row.getValueString("slackUsergroupId"));
+         if(handle != null && !handle.isBlank() && !handle.equals(row.getValueString("handle")))
+         {
+            SlackStore.update(SlackTables.USER_GROUP, new QRecord().withValue("id", row.getValueInteger("id")).withValue("handle", handle), null);
+         }
+      }
    }
 
    /*******************************************************************************
