@@ -71,6 +71,8 @@ public final class SlackTables
    public static final String MESSAGE    = "slack_message";
    public static final String ATTEMPT    = "slack_message_attempt";
 
+   public static final List<String> MAIN = List.of(MESSAGE, CONNECTION, WORKSPACE, CHANNEL, USER_GROUP, TEMPLATE);
+
    public static final List<String> ALL = List.of(WORKSPACE, CONNECTION, CHANNEL, USER_GROUP, TEMPLATE, MESSAGE, ATTEMPT);
 
    /////////////////////////////////////////////////////////////////////////////
@@ -105,7 +107,8 @@ public final class SlackTables
     *******************************************************************************/
    public static QPermissionRules permissionRules()
    {
-      return (new QPermissionRules().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION).withPermissionBaseName("slack"));
+      return (new QPermissionRules().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION).withPermissionBaseName("slack")
+         .withCustomPermissionChecker(new com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference(com.kingsrook.qbits.slack.permissions.SlackPermissionChecker.class)));
    }
 
 
@@ -448,9 +451,9 @@ public final class SlackTables
          .withField(field("status", QFieldType.STRING).withPossibleValueSourceName("slack_message_status").withDefaultValue("QUEUED").withMaxLength(500))
          .withField(field("category", QFieldType.STRING).withMaxLength(500))
          .withField(field("templateName", QFieldType.STRING).withMaxLength(500))
-         .withField(field("text", QFieldType.TEXT).withIsSensitive(true))
-         .withField(field("blocksJson", QFieldType.TEXT).withIsSensitive(true))
-         .withField(field("variablesSnapshot", QFieldType.TEXT).withIsSensitive(true))
+         .withField(field("text", QFieldType.TEXT).withIsSensitive(true).withFieldSecurityLock(SlackSecurity.bodyFieldLock()))
+         .withField(field("blocksJson", QFieldType.TEXT).withIsSensitive(true).withFieldSecurityLock(SlackSecurity.bodyFieldLock()))
+         .withField(field("variablesSnapshot", QFieldType.TEXT).withIsSensitive(true).withFieldSecurityLock(SlackSecurity.bodyFieldLock()))
          .withField(field("idempotencyKey", QFieldType.STRING).withMaxLength(500))
          .withField(field("parentMessageId", QFieldType.INTEGER).withPossibleValueSourceName(MESSAGE))
          .withField(field("threadTs", QFieldType.STRING).withMaxLength(500))
