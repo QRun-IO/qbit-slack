@@ -23,7 +23,10 @@ package com.kingsrook.qbits.slack;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.kingsrook.qbits.slack.bridge.SlackOutboxMessagingProviderMetaData;
+import com.kingsrook.qbits.slack.delivery.SlackAlerts;
 import com.kingsrook.qbits.slack.metadata.SlackTables;
+import com.kingsrook.qbits.slack.processes.SlackProcesses;
 import com.kingsrook.qbits.slack.security.SlackSecurity;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
@@ -127,6 +130,14 @@ public class SlackQBitProducer implements QBitMetaDataProducer<SlackQBitConfig>
 
       SlackTables.joins().forEach(output::add);
       SlackTables.childWidgets().forEach(output::add);
+
+      SlackProcesses.processes(qBitConfig).forEach(process ->
+      {
+         process.setSourceQBitName(getQBitMetaData().getName());
+         output.add(process);
+      });
+      SlackAlerts.types().forEach(output::add);
+      output.add(new SlackOutboxMessagingProviderMetaData().withName(qBitConfig.getBridgeProviderName()));
 
       output.addSelfToInstance(qInstance);
       return (new MetaDataProducerMultiOutput());
