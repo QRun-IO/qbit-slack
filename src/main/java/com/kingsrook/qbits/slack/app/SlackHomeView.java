@@ -20,20 +20,28 @@
 
 package com.kingsrook.qbits.slack.app;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import com.kingsrook.qbits.slack.metadata.SlackEnums;
 import com.kingsrook.qbits.slack.metadata.SlackTables;
 import com.kingsrook.qbits.slack.readiness.SlackReadiness;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.dashboard.widgets.TableData;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 
 /*******************************************************************************
- ** Theme-neutral stacked sections; every record-sourced value is HTML escaped.
+ ** Typed tables inherit responsive layout and themes from the QQQ dashboard.
  *******************************************************************************/
 public final class SlackHomeView
 {
-   private static final String WRAP = "min-width:0;max-width:100%;overflow-wrap:anywhere;box-sizing:border-box;";
-   private static final String CARD = WRAP + "padding:16px;border:1px solid rgba(127,127,127,.3);border-radius:8px;";
-
    /*******************************************************************************
     ** Utility class.
     *******************************************************************************/
@@ -42,88 +50,124 @@ public final class SlackHomeView
    }
 
    /*******************************************************************************
-    ** Render personal data first, then tenant administration if permitted.
+    ** Workspace names link to the viewer's connection, never an admin-only record.
     *******************************************************************************/
-   public static String render(Map<String, Integer> personal, List<QRecord> connections, List<QRecord> messages,
-      List<QRecord> workspaces, boolean admin, Map<String, Integer> outbox, List<QRecord> failures)
+   public static TableData connections(List<QRecord> connections, List<QRecord> workspaces)
    {
-      StringBuilder html = new StringBuilder("<div style=\"" + WRAP + "display:flex;flex-direction:column;gap:16px;color:inherit\"><h2>My Slack</h2>");
-      section(html, "My connections");
-      if(connections.isEmpty())
-      {
-         html.append("<p>No connections yet. Use Connect Slack on Connections.</p>");
-      }
+      List<Map<String, Object>> rows = new ArrayList<>();
       for(QRecord row : connections)
       {
          String workspace = workspaces.stream().filter(w -> w.getValueInteger("id").equals(row.getValueInteger("workspaceId")))
             .map(w -> w.getValueString("teamName")).findFirst().orElse("Workspace " + row.getValueInteger("workspaceId"));
-         html.append("<p>").append(link(SlackTables.CONNECTION, row, workspace)).append(" &mdash; ")
-            .append(esc(row.getValueString("status"))).append(" &middot; Connected: ").append(esc(row.getValueString("connectedAt"))).append("</p>");
+         rows.add(Map.of("workspace", link(SlackTables.CONNECTION, row, workspace),
+            "status", label(row.getValueString("status")), "connected", date(row.getValueInstant("connectedAt"))));
       }
-      html.append("</section>");
-      counts(html, "My deliveries (24 h)", personal);
-      messages(html, "My recent deliveries", messages);
-      if(admin)
-      {
-         section(html, "Workspace readiness");
-         if(workspaces.isEmpty())
-         {
-            html.append("<p>No workspaces installed.</p>");
-         }
-         for(QRecord workspace : workspaces)
-         {
-            html.append("<h4>").append(link(SlackTables.WORKSPACE, workspace, workspace.getValueString("teamName"))).append("</h4>");
-            for(var check : SlackReadiness.workspaceSnapshot(workspace.getValueInteger("id")).checks())
-            {
-               html.append("<p>").append(esc(check.name())).append(": <strong>").append(esc(check.status()))
-                  .append("</strong> &mdash; ").append(esc(check.summary())).append("<br>Fix: ")
-                  .append(check.name().equals("registeredChannels") ? "Check registered channels, unarchive them and invite the bot." : "Install or reconnect this workspace with the required scopes.")
-                  .append(" Run Check readiness to refresh.</p>");
-            }
-         }
-         html.append("</section>");
-         counts(html, "Outbox", outbox);
-         messages(html, "Recent failures", failures);
-      }
-      return (html.append("</div>").toString());
-   }
-
-   /*******************************************************************************
-    ** Counts wrap naturally without fixed-width columns.
-    *******************************************************************************/
-   private static void counts(StringBuilder html, String title, Map<String, Integer> counts)
-   {
-      section(html, title);
-      html.append("<div style=\"display:flex;flex-wrap:wrap;gap:12px 24px\">");
-      counts.forEach((label, count) -> html.append("<div><strong>").append(count).append("</strong> ").append(esc(label)).append("</div>"));
-      html.append("</div></section>");
+      return (table(List.of(column("Workspace", "workspace", "html"), column("Status", "status", "text"), column("Connected", "connected", "text")),
+         rows, "No connections yet. Use Connect Slack on Connections."));
    }
 
    /*******************************************************************************
     ** Linked rows contain delivery metadata, never message bodies.
     *******************************************************************************/
-   private static void messages(StringBuilder html, String title, List<QRecord> messages)
+   public static TableData messages(List<QRecord> messages, QQueryFilter filter)
    {
-      section(html, title);
-      if(messages.isEmpty())
-      {
-         html.append("<p>No deliveries.</p>");
-      }
+      List<Map<String, Object>> rows = new ArrayList<>();
       for(QRecord row : messages)
       {
-         html.append("<p>").append(link(SlackTables.MESSAGE, row, "Message " + row.getValueInteger("id")))
-            .append(" &mdash; ").append(esc(row.getValueString("status"))).append(" &middot; ").append(esc(row.getValueString("channelLabel")))
-            .append("<br>").append(esc(row.getValueString("createDate"))).append("</p>");
+         rows.add(Map.of("message", link(SlackTables.MESSAGE, row, "Message " + row.getValueInteger("id")),
+            "status", messageStatus(row.getValueString("status")), "where", row.getValueString("channelLabel") == null ? "Not recorded" : row.getValueString("channelLabel"),
+            "when", date(row.getValueInstant("createDate"))));
       }
-      html.append("</section>");
+      return (table(List.of(column("Message", "message", "html"), column("Status", "status", "text"), column("Where", "where", "text"), column("When", "when", "text")),
+         rows, "No deliveries.").withLinkText("View all").withLinkURL(listUrl(filter)));
    }
 
    /*******************************************************************************
-    ** A full-width section.
+    ** One row per workspace check; successful checks have no remediation hint.
     *******************************************************************************/
-   private static void section(StringBuilder html, String title)
+   public static TableData readiness(List<QRecord> workspaces)
    {
-      html.append("<section style=\"").append(CARD).append("\"><h3>").append(esc(title)).append("</h3>");
+      List<Map<String, Object>> rows = new ArrayList<>();
+      for(QRecord workspace : workspaces)
+      {
+         for(var check : SlackReadiness.workspaceSnapshot(workspace.getValueInteger("id")).checks())
+         {
+            boolean channels = "registeredChannels".equals(check.name());
+            String status = switch(check.status())
+            {
+               case "READY" -> "READY";
+               case "WARN" -> "DEGRADED";
+               default -> "NOT READY";
+            };
+            String fix = "READY".equals(status) ? "" : "UNKNOWN".equals(check.status()) ? "Run Check readiness to refresh."
+               : channels ? "Check registered channels, unarchive them and invite the bot. Run Check readiness to refresh."
+               : "Install or reconnect this workspace with the required scopes. Run Check readiness to refresh.";
+            rows.add(Map.of("workspace", link(SlackTables.WORKSPACE, workspace, workspace.getValueString("teamName")),
+               "check", channels ? "Registered channels" : "Bot token and scopes", "status", status, "fix", fix));
+         }
+      }
+      return (table(List.of(column("Workspace", "workspace", "html"), column("Check", "check", "text"), column("Status", "status", "text"), column("Fix", "fix", "text")),
+         rows, "No workspaces installed."));
+   }
+
+   /*******************************************************************************
+    ** Human delivery labels clarify exceptional states instead of exposing enums.
+    *******************************************************************************/
+   public static String messageStatus(String status)
+   {
+      if(status == null)
+      {
+         return ("Not recorded");
+      }
+      return (switch(SlackEnums.MessageStatus.valueOf(status))
+      {
+         case WAITING_PARENT -> "Waiting for parent";
+         case FAILED_AUTH -> "Failed: not authorized";
+         case RETRY_WAIT -> "Retrying";
+         default -> label(status);
+      });
+   }
+
+   /*******************************************************************************
+    ** Plain enum display label for connection and remaining delivery states.
+    *******************************************************************************/
+   private static String label(String value)
+   {
+      return (value == null ? "Not recorded" : value.charAt(0) + value.substring(1).toLowerCase(Locale.ROOT).replace('_', ' '));
+   }
+
+   /*******************************************************************************
+    ** Use the viewer's timezone, falling back to the application's configured zone.
+    *******************************************************************************/
+   private static String date(Instant value)
+   {
+      return (value == null ? "Not recorded" : DateTimeFormatter.ofPattern("MMM d, yyyy, h:mm a z", Locale.ENGLISH)
+         .withZone(ValueUtils.getSessionOrInstanceZoneId()).format(value));
+   }
+
+   /*******************************************************************************
+    ** A Messages list filtered to the count or recent list's actual scope.
+    *******************************************************************************/
+   public static String listUrl(QQueryFilter filter)
+   {
+      return ("/app/" + SlackTables.MESSAGE + "?filter=" + URLEncoder.encode(JsonUtils.toJson(filter), StandardCharsets.UTF_8));
+   }
+
+   /*******************************************************************************
+    ** Only record links use HTML; ordinary text is escaped by the table renderer.
+    *******************************************************************************/
+   private static TableData.Column column(String header, String accessor, String type)
+   {
+      return (new TableData.Column(type, header, accessor, null, "left").withVerticalAlign("top"));
+   }
+
+   /*******************************************************************************
+    ** Full-width table with an honest empty state and no unnecessary page selector.
+    *******************************************************************************/
+   private static TableData table(List<TableData.Column> columns, List<Map<String, Object>> rows, String empty)
+   {
+      return (new TableData(null, columns, rows).withRowsPerPage(Math.max(10, rows.size()))
+         .withHidePaginationDropdown(true).withNoRowsFoundHTML(empty));
    }
 
    /*******************************************************************************
@@ -131,11 +175,11 @@ public final class SlackHomeView
     *******************************************************************************/
    private static String link(String table, QRecord row, String label)
    {
-      return ("<a style=\"color:inherit\" href=\"/app/" + table + "/" + row.getValueInteger("id") + "\">" + esc(label) + "</a>");
+      return ("<a href=\"/app/" + table + "/" + row.getValueInteger("id") + "\">" + esc(label) + "</a>");
    }
 
    /*******************************************************************************
-    ** Escape text and attribute delimiters; absent dates remain explicit.
+    ** Escape record-sourced labels in HTML cells.
     *******************************************************************************/
    private static String esc(String value)
    {

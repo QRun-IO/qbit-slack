@@ -78,6 +78,11 @@ public class SlackPermissionChecker implements CustomPermissionChecker
       }
       SlackSecurity.applyBodyPermission(QContext.getQSession());
       String needed = SlackPermissions.VIEW;
+      if(metadata instanceof com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData widget
+         && com.kingsrook.qbits.slack.app.SlackApp.ADMIN_WIDGETS.contains(widget.getName()))
+      {
+         needed = SlackPermissions.ADMIN;
+      }
       if(metadata instanceof QTableMetaData workspace && SlackTables.WORKSPACE.equals(workspace.getName()) && !WORKSPACE_LOOKUP.get())
       {
          needed = SlackPermissions.ADMIN;

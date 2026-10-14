@@ -20,6 +20,8 @@
 
 package com.kingsrook.qbits.slack;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,8 +44,12 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutp
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
+import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetInput;
+import com.kingsrook.qqq.backend.core.model.dashboard.widgets.MultiStatisticsData;
+import com.kingsrook.qqq.backend.core.model.dashboard.widgets.TableData;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppChildMetaData;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -54,7 +60,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SlackAppTest
 {
    /*******************************************************************************
-    ** Main navigation contains tables only and exactly one full-width dashboard.
+    ** Main navigation contains tables only, with full-width typed dashboard sections.
     *******************************************************************************/
    @Test
    void navigation() throws Exception
@@ -66,8 +72,13 @@ class SlackAppTest
          var app = env.instance().getApp("slack");
          assertThat(app.getLabel()).isEqualTo("Slack");
          assertThat(app.getChildren()).extracting(QAppChildMetaData::getName).containsExactlyElementsOf(SlackTables.MAIN);
-         assertThat(app.getWidgets()).containsExactly(SlackApp.HOME_WIDGET);
+         assertThat(app.getWidgets()).containsExactly(SlackApp.HOME_WIDGET, SlackApp.DELIVERIES, SlackApp.RECENT,
+            SlackApp.READINESS, SlackApp.OUTBOX, SlackApp.FAILURES);
+         assertThat(SlackApp.widgets()).allMatch(widget -> widget.getGridColumns() == 12);
+         assertThat(SlackApp.widgets()).extracting(widget -> widget.getType())
+            .containsExactly("table", "multiStatistics", "table", "table", "multiStatistics", "table");
          assertThat(env.instance().getWidget(SlackApp.HOME_WIDGET).getGridColumns()).isEqualTo(12);
+         assertThat(env.instance().getWidget(SlackApp.HOME_WIDGET).getType()).isEqualTo("table");
          assertThat(env.instance().getProcess(SlackProcesses.CONNECT).getTableName()).isEqualTo(SlackTables.CONNECTION);
          assertThat(env.instance().getProcess(SlackProcesses.TEST_MESSAGE).getTableName()).isEqualTo(SlackTables.CONNECTION);
       }
@@ -111,7 +122,8 @@ class SlackAppTest
          env.tenant("alice", 1);
          env.tenant("bob", 1);
          int workspace = env.workspace("T1", 1, "xoxb-demo", "BOT");
-         env.connection("alice", workspace, "UA", null);
+         int connection = env.connection("alice", workspace, "UA", null);
+         env.set(SlackTables.CONNECTION, connection, "connectedAt", Instant.parse("2026-10-02T17:49:54.182409Z"));
          env.connection("bob", workspace, "UB", null);
          int hidden = message(env, workspace, "bob", "SENT", env.clock().instant());
          List<Integer> ids = new ArrayList<>();
@@ -121,11 +133,34 @@ class SlackAppTest
          }
          env.asOwner("alice");
          assertThat(SlackHome.count("SENT", "alice", "createDate")).isEqualTo(12);
-         String html = SlackHome.overview().getHtml();
-         assertThat(html).contains("My Slack", "Team T1", "My deliveries (24 h)", "<strong>12</strong>")
-            .doesNotContain("Workspace readiness", "/app/slack_message/" + hidden + "\"", "/app/slack_message/" + ids.getFirst() + "\"", "body-canary");
-         assertThat(html.split("href=\"/app/slack_message/", -1).length - 1).isEqualTo(10);
-         assertThat(new SlackApp.HomeRenderer().render(null)).isNotNull();
+         QContext.getQSession().withValue(QSession.VALUE_KEY_USER_TIMEZONE, "America/Chicago");
+         TableData connections = (TableData) SlackHome.render(SlackApp.HOME_WIDGET);
+         assertThat(connections.getRows()).hasSize(1);
+         assertThat(connections.getRows().getFirst().get("workspace").toString()).contains("Team T1", "/app/slack_connection/");
+         assertThat(connections.getRows().getFirst().get("status")).isEqualTo("Active");
+         assertThat(connections.getRows().getFirst().get("connected")).isEqualTo("Oct 2, 2026, 12:49 PM CDT");
+         MultiStatisticsData deliveries = (MultiStatisticsData) SlackHome.render(SlackApp.DELIVERIES);
+         assertThat(deliveries.getStatisticsGroupData()).hasSize(1);
+         var sent = deliveries.getStatisticsGroupData().getFirst();
+         assertThat(sent.getHeader()).isEqualTo("Sent");
+         assertThat(sent.getStatisticList().getFirst().getValue()).isEqualTo(12);
+         assertThat(URLDecoder.decode(sent.getStatisticList().getFirst().getUrl(), StandardCharsets.UTF_8))
+            .contains("ownerUserId", "alice", "SENT", "createDate", "GREATER_THAN_OR_EQUALS", "LESS_THAN_OR_EQUALS");
+         TableData recent = (TableData) SlackHome.render(SlackApp.RECENT);
+         assertThat(recent.getRows()).hasSize(10);
+         assertThat(recent.getRows().toString()).doesNotContain("/app/slack_message/" + hidden + "\"", "/app/slack_message/" + ids.getFirst() + "\"", "body-canary");
+         assertThat(recent.getRows()).allSatisfy(row ->
+         {
+            assertThat(row.get("status")).isEqualTo("Sent");
+            assertThat(row.get("when").toString()).containsPattern("[A-Z][a-z]{2} \\d{1,2}, \\d{4}, ").doesNotContain("T00:");
+         });
+         assertThat(recent.getLinkText()).isEqualTo("View all");
+         assertThat(URLDecoder.decode(recent.getLinkURL(), StandardCharsets.UTF_8)).contains("alice", "ownerUserId");
+         assertThat(new SlackApp.HomeRenderer().render(new RenderWidgetInput().withWidgetMetaData(env.instance().getWidget(SlackApp.RECENT)))).isNotNull();
+         for(String name : SlackApp.ADMIN_WIDGETS)
+         {
+            assertThatThrownBy(() -> SlackHome.render(name)).hasMessageContaining("slack.admin");
+         }
       }
    }
 
@@ -149,9 +184,64 @@ class SlackAppTest
          SlackSecurity.applyToSession(session, "alice", true);
          assertThat(SlackHome.count("FAILED_AUTH", null, "modifyDate")).isEqualTo(2);
          assertThat(SlackHome.count("FAILED_AUTH", "alice", "createDate")).isEqualTo(1);
-         String html = SlackHome.overview().getHtml();
-         assertThat(html).contains("Workspace readiness", "Team T1", "UNKNOWN", "Fix:", "Outbox", "Recent failures")
-            .doesNotContain("Team T2", "/app/slack_message/" + hidden + "\"");
+         TableData readiness = (TableData) SlackHome.render(SlackApp.READINESS);
+         assertThat(readiness.getRows()).hasSize(2);
+         assertThat(readiness.getRows().toString()).contains("Team T1", "NOT READY", "Run Check readiness", "Bot token and scopes", "Registered channels")
+            .doesNotContain("Team T2", "workspace:", "UNKNOWN");
+         TableData failures = (TableData) SlackHome.render(SlackApp.FAILURES);
+         assertThat(failures.getRows()).hasSize(2);
+         assertThat(failures.getRows().toString()).contains("Failed: not authorized").doesNotContain("FAILED_AUTH", "/app/slack_message/" + hidden + "\"");
+         MultiStatisticsData outbox = (MultiStatisticsData) SlackHome.render(SlackApp.OUTBOX);
+         assertThat(outbox.getStatisticsGroupData()).hasSize(5);
+         assertThat(outbox.getStatisticsGroupData().get(4).getStatisticList().getFirst().getValue()).isEqualTo(2);
+         assertThat(outbox.getStatisticsGroupData()).allSatisfy(group ->
+            assertThat(group.getStatisticList().getFirst().getUrl()).startsWith("/app/slack_message?filter="));
+      }
+   }
+
+   /*******************************************************************************
+    ** Empty states, readable delivery labels and readiness remediation follow status.
+    *******************************************************************************/
+   @Test
+   void typedEmptyAndReadyStates() throws Exception
+   {
+      try(SlackTestEnv env = SlackTestEnv.create(false, c ->
+      {
+      }))
+      {
+         int workspace = env.workspace("T1", null, "xoxb-test", "UBOT");
+         env.asOwner("alice");
+         assertThat(((TableData) SlackHome.render(SlackApp.HOME_WIDGET)).getRows()).isEmpty();
+         assertThat(((TableData) SlackHome.render(SlackApp.RECENT)).getNoRowsFoundHTML()).isEqualTo("No deliveries.");
+         var empty = (MultiStatisticsData) SlackHome.render(SlackApp.DELIVERIES);
+         assertThat(empty.getStatisticsGroupData()).hasSize(1);
+         assertThat(empty.getStatisticsGroupData().getFirst().getHeader()).isEqualTo("Sent");
+         assertThat(empty.getStatisticsGroupData().getFirst().getStatisticList().getFirst().getValue()).isZero();
+         message(env, workspace, "alice", "WAITING_PARENT", env.clock().instant());
+         env.asOwner("alice");
+         assertThat(((TableData) SlackHome.render(SlackApp.RECENT)).getRows().getFirst().get("status")).isEqualTo("Waiting for parent");
+         for(String scopes : List.of(com.kingsrook.qbits.slack.oauth.SlackConnect.BOT_SCOPES + ",usergroups:read,chat:write.customize",
+            com.kingsrook.qbits.slack.oauth.SlackConnect.BOT_SCOPES, "channels:read"))
+         {
+            env.asSystem();
+            env.slack().script("auth.test", new FakeSlackServer.Reply(200, "{\"ok\":true,\"team_id\":\"T1\"}", java.util.Map.of("x-oauth-scopes", scopes)));
+            com.kingsrook.qbits.slack.readiness.SlackReadiness.workspace(workspace);
+            env.asOwner("alice").withPermissions(SlackPermissions.ADMIN);
+            TableData readiness = (TableData) SlackHome.render(SlackApp.READINESS);
+            String expected = scopes.equals("channels:read") ? "NOT READY" : scopes.contains("usergroups:read") ? "READY" : "DEGRADED";
+            assertThat(readiness.getRows().getFirst().get("status")).isEqualTo(expected);
+            assertThat(readiness.getRows()).allSatisfy(row ->
+            {
+               if("READY".equals(row.get("status")))
+               {
+                  assertThat(row.get("fix")).isEqualTo("");
+               }
+               else
+               {
+                  assertThat(row.get("fix").toString()).contains("Run Check readiness");
+               }
+            });
+         }
       }
    }
 
@@ -292,7 +382,7 @@ class SlackAppTest
          session.withPermissions(SlackPermissions.ADMIN);
          checker.checkPermissionsThrowing(new UpdateInput(SlackTables.TEMPLATE), env.instance().getTable(SlackTables.TEMPLATE));
          session.setPermissions(Set.of("slack.hasAccess"));
-         assertThatThrownBy(() -> SlackHome.overview()).hasMessageContaining("slack.view");
+         assertThatThrownBy(() -> SlackHome.render(SlackApp.HOME_WIDGET)).hasMessageContaining("slack.view");
       }
    }
 

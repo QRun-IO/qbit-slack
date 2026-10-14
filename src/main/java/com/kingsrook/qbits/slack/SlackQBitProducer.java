@@ -148,7 +148,7 @@ public class SlackQBitProducer implements QBitMetaDataProducer<SlackQBitConfig>
 
       output.addSelfToInstance(qInstance);
       qInstance.addApp(com.kingsrook.qbits.slack.app.SlackApp.app(qInstance.getTables()));
-      qInstance.addWidget(com.kingsrook.qbits.slack.app.SlackApp.widget());
+      com.kingsrook.qbits.slack.app.SlackApp.widgets().forEach(qInstance::addWidget);
       com.kingsrook.qbits.slack.preferences.SlackPreferencesAdapter.register(qInstance);
       com.kingsrook.qbits.slack.oauth.SlackOAuthRouteProvider.register(qInstance);
       try

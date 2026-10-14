@@ -35,11 +35,17 @@ import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 
 /*******************************************************************************
- ** One full-width home and the six main tables; processes remain record actions.
+ ** Full-width typed home widgets; processes remain record actions.
  *******************************************************************************/
 public final class SlackApp
 {
    public static final String HOME_WIDGET = "slackHome";
+   public static final String DELIVERIES = "slackHomeDeliveries";
+   public static final String RECENT = "slackHomeRecent";
+   public static final String READINESS = "slackHomeReadiness";
+   public static final String OUTBOX = "slackHomeOutbox";
+   public static final String FAILURES = "slackHomeFailures";
+   public static final List<String> ADMIN_WIDGETS = List.of(READINESS, OUTBOX, FAILURES);
 
    /*******************************************************************************
     ** Utility class.
@@ -54,18 +60,31 @@ public final class SlackApp
    public static QAppMetaData app(Map<String, QTableMetaData> tables)
    {
       QAppMetaData app = new QAppMetaData().withName("slack").withLabel("Slack").withIcon(new QIcon("chat"))
-         .withPermissionRules(SlackTables.permissionRules()).withWidgets(List.of(HOME_WIDGET));
+         .withPermissionRules(SlackTables.permissionRules()).withWidgets(widgets().stream().map(QWidgetMetaData::getName).toList());
       SlackTables.MAIN.forEach(name -> app.withChild(tables.get(name)));
       return (app);
    }
 
    /*******************************************************************************
-    ** The only dashboard widget occupies all twelve grid columns.
+    ** Each section occupies all twelve grid columns, including on small screens.
     *******************************************************************************/
-   public static QWidgetMetaData widget()
+   public static List<QWidgetMetaData> widgets()
    {
-      return (new QWidgetMetaData().withName(HOME_WIDGET).withLabel("My Slack").withType(WidgetType.HTML.getType())
-         .withGridColumns(12).withIsCard(false).withShowReloadButton(true)
+      return (List.of(widget(HOME_WIDGET, "My connections", WidgetType.TABLE),
+         widget(DELIVERIES, "My deliveries (24 h)", WidgetType.MULTI_STATISTICS),
+         widget(RECENT, "My recent deliveries", WidgetType.TABLE),
+         widget(READINESS, "Workspace readiness", WidgetType.TABLE),
+         widget(OUTBOX, "Outbox", WidgetType.MULTI_STATISTICS),
+         widget(FAILURES, "Recent failures", WidgetType.TABLE)));
+   }
+
+   /*******************************************************************************
+    ** Labels belong to widget metadata, never duplicated inside their payloads.
+    *******************************************************************************/
+   private static QWidgetMetaData widget(String name, String label, WidgetType type)
+   {
+      return (new QWidgetMetaData().withName(name).withLabel(label).withType(type.getType())
+         .withGridColumns(12).withIsCard(true).withShowReloadButton(true)
          .withCodeReference(new QCodeReference(HomeRenderer.class)).withPermissionRules(SlackTables.permissionRules()));
    }
 
@@ -80,7 +99,7 @@ public final class SlackApp
       @Override
       public RenderWidgetOutput render(RenderWidgetInput input) throws QException
       {
-         return (new RenderWidgetOutput(SlackHome.overview()));
+         return (new RenderWidgetOutput(SlackHome.render(input.getWidgetMetaData().getName())));
       }
    }
 }
