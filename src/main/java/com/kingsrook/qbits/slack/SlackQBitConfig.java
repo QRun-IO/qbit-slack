@@ -65,6 +65,8 @@ public class SlackQBitConfig implements QBitConfig
    private Long maxAttachmentBytes = 50L * 1024 * 1024;
    private String slackApiBaseUrl = "https://slack.com/api";
    private String publicBaseUrl;
+   private Integer connectTimeoutSeconds = 5;
+   private Integer requestTimeoutSeconds = 15;
 
 
 
@@ -84,6 +86,7 @@ public class SlackQBitConfig implements QBitConfig
       assertCondition(appName != null && !appName.isBlank() && appLabel != null && !appLabel.isBlank(), "Slack qbit: appName and appLabel are required", errors);
       assertCondition(securityFields != null && recordSecurityLocks != null, "Slack qbit: securityFields and recordSecurityLocks must not be null", errors);
       assertCondition(positive(maxAttempts) && positive(batchSize) && positive(dispatchIntervalSeconds) && positive(membershipCacheMinutes), "Slack qbit: attempts, batch size, dispatch interval and membership cache must be positive", errors);
+      assertCondition(positive(connectTimeoutSeconds) && positive(requestTimeoutSeconds), "Slack qbit: HTTP timeouts must be positive", errors);
       assertCondition(leaseSeconds != null && leaseSeconds >= 60, "Slack qbit: leaseSeconds must be at least 60", errors);
       assertCondition(retryMinutes != null && !retryMinutes.isEmpty() && retryMinutes.stream().allMatch(n -> n != null && n >= 1), "Slack qbit: retryMinutes must contain positive delays", errors);
       assertCondition(bodyRetentionDays != null && bodyRetentionDays >= 0 && messageRetentionDays != null && messageRetentionDays >= 0, "Slack qbit: retention days must not be negative", errors);
@@ -613,6 +616,48 @@ public class SlackQBitConfig implements QBitConfig
    public SlackQBitConfig withPublicBaseUrl(String publicBaseUrl)
    {
       this.publicBaseUrl = publicBaseUrl;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for connectTimeoutSeconds
+    *******************************************************************************/
+   public Integer getConnectTimeoutSeconds()
+   {
+      return (this.connectTimeoutSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for connectTimeoutSeconds
+    *******************************************************************************/
+   public SlackQBitConfig withConnectTimeoutSeconds(Integer connectTimeoutSeconds)
+   {
+      this.connectTimeoutSeconds = connectTimeoutSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for requestTimeoutSeconds
+    *******************************************************************************/
+   public Integer getRequestTimeoutSeconds()
+   {
+      return (this.requestTimeoutSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for requestTimeoutSeconds
+    *******************************************************************************/
+   public SlackQBitConfig withRequestTimeoutSeconds(Integer requestTimeoutSeconds)
+   {
+      this.requestTimeoutSeconds = requestTimeoutSeconds;
       return (this);
    }
 }
