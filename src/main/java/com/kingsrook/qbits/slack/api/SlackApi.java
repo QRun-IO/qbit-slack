@@ -54,6 +54,17 @@ import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 public final class SlackApi
 {
    /*******************************************************************************
+    ** Apply Slack owner and body-permission keys to a host-created session.
+    ** Idempotently replaces earlier Slack keys. Null is a no-op; a missing user
+    ** gets no owner key. Hosts must authorize allAccess before passing true.
+    *******************************************************************************/
+   public static void applySessionKeys(com.kingsrook.qqq.backend.core.model.session.QSession session, boolean allAccess)
+   {
+      com.kingsrook.qbits.slack.security.SlackSecurity.applyToSession(session,
+         session == null || session.getUser() == null ? null : session.getUser().getIdReference(), allAccess);
+   }
+
+   /*******************************************************************************
     ** Utility class.
     *******************************************************************************/
    private SlackApi()
