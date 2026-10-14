@@ -295,6 +295,11 @@ public class FakeSlackServer implements AutoCloseable
 
       switch(request.method())
       {
+         case "oauth.v2.access":
+            return (Reply.error("invalid_code"));
+         case "auth.revoke":
+         case "apps.uninstall":
+            return (Reply.of(200, "{\"ok\":true}"));
          case "chat.postMessage":
             return (Reply.of(200, new JSONObject().put("ok", true).put("channel", request.json().optString("channel")).put("ts", "1700000000." + String.format("%06d", tsCount.incrementAndGet())).toString()));
          case "chat.update":

@@ -32,6 +32,7 @@ import com.kingsrook.qbits.slack.security.SlackAuthorizer;
 import com.kingsrook.qbits.slack.security.SlackOwnerSession;
 import com.kingsrook.qbits.slack.support.SlackRuntime;
 import com.kingsrook.qbits.slack.support.SlackStore;
+import com.kingsrook.qbits.slack.template.SlackTemplates;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -111,7 +112,7 @@ public final class SlackService
       boolean ownerless = owner == null;
       String  storedOwner = ownerless ? SlackAuthorizer.systemOwner(request.getTenantKey()) : owner;
 
-      String denied = permissionProblem(owner, request.getBlocksJson() != null && !request.getBlocksJson().isBlank());
+      String denied = permissionProblem(owner, !"SECURITY".equals(request.getCategory()) && request.getBlocksJson() != null && !request.getBlocksJson().isBlank());
       if(denied != null)
       {
          return (SlackSendResult.refused(denied));
@@ -156,7 +157,15 @@ public final class SlackService
       }
       AuthorizedSend send = authorization.getSend();
 
-      QRecord row = baseRow(request, storedOwner, send, SlackEnums.Operation.POST);
+      QRecord row;
+      try
+      {
+         row = baseRow(request, storedOwner, send, SlackEnums.Operation.POST);
+      }
+      catch(IllegalArgumentException e)
+      {
+         return (SlackSendResult.refused(e instanceof com.kingsrook.qbits.slack.phi.SlackPayloadGuard.RestrictedVariableException ? e.getMessage() : "Invalid or restricted Slack content"));
+      }
       if(parent != null)
       {
          boolean parentSent = "SENT".equals(parent.getValueString("status")) && parent.getValueString("slackTs") != null;
@@ -234,13 +243,22 @@ public final class SlackService
       {
          return (SlackSendResult.refused("Only the owner can update a Slack message"));
       }
-      String denied = permissionProblem(owner, request.getBlocksJson() != null && !request.getBlocksJson().isBlank());
+      String denied = permissionProblem(owner, !"SECURITY".equals(request.getCategory()) && request.getBlocksJson() != null && !request.getBlocksJson().isBlank());
       if(denied != null)
       {
          return (SlackSendResult.refused(denied));
       }
 
-      QRecord target = ownerMessage(owner, messageId);
+      QRecord target;
+      if(QContext.getQSession().hasPermission("slack.admin"))
+      {
+         List<QRecord> visible = SlackStore.queryAsCurrent(SlackTables.MESSAGE, SlackStore.equal("id", messageId));
+         target = visible.isEmpty() ? null : visible.getFirst();
+      }
+      else
+      {
+         target = ownerMessage(owner, messageId);
+      }
       if(target == null)
       {
          return (SlackSendResult.refused("That message wasn't found"));
@@ -250,6 +268,15 @@ public final class SlackService
          return (SlackSendResult.refused("Only a message that was sent can be updated"));
       }
 
+      String originalOwner = target.getValueString("ownerUserId");
+      if(!owner.equals(originalOwner))
+      {
+         if(!QContext.getQSession().hasPermission("slack.admin") || SlackAuthorizer.isOwnerless(originalOwner))
+         {
+            return (SlackSendResult.refused("Only the owner or tenant admin can update a Slack message"));
+         }
+         owner = originalOwner;
+      }
       SlackEnums.PostAs postAs = SlackEnums.PostAs.valueOf(target.getValueString("postAs"));
       SlackAuthorization authorization = new SlackAuthorizer().authorize(new SlackAuthorizer.Request()
          .withOwnerUserId(owner).withAddress(target.getValueString("targetRef")).withWorkspaceId(target.getValueInteger("workspaceId")).withPostAs(postAs));
@@ -258,7 +285,15 @@ public final class SlackService
          return (SlackSendResult.refused(authorization.getRefusal().message()));
       }
 
-      QRecord row = baseRow(request, owner, authorization.getSend(), SlackEnums.Operation.UPDATE);
+      QRecord row;
+      try
+      {
+         row = baseRow(request, owner, authorization.getSend(), SlackEnums.Operation.UPDATE);
+      }
+      catch(IllegalArgumentException e)
+      {
+         return (SlackSendResult.refused(e instanceof com.kingsrook.qbits.slack.phi.SlackPayloadGuard.RestrictedVariableException ? e.getMessage() : "Invalid or restricted Slack content"));
+      }
       row.withValue("targetMessageId", messageId);
       row.withValue("slackTs", target.getValueString("slackTs"));
       row.withValue("slackChannelId", target.getValueString("slackChannelId"));
@@ -285,9 +320,9 @@ public final class SlackService
     *******************************************************************************/
    private static String validate(SlackSendRequest request, boolean needsAddress)
    {
-      boolean hasText   = request.getText() != null && !request.getText().isBlank();
-      boolean hasBlocks = request.getBlocksJson() != null && !request.getBlocksJson().isBlank();
-      if(!hasText && !hasBlocks)
+      boolean hasText   = !"SECURITY".equals(request.getCategory()) && request.getText() != null && !request.getText().isBlank();
+      boolean hasBlocks = !"SECURITY".equals(request.getCategory()) && request.getBlocksJson() != null && !request.getBlocksJson().isBlank();
+      if(!hasText && !hasBlocks && request.getTemplateName() == null && !"SECURITY".equals(request.getCategory()))
       {
          return ("A Slack message needs text or blocks");
       }
@@ -423,9 +458,15 @@ public final class SlackService
    /*******************************************************************************
     ** The row common to a post and an update.
     *******************************************************************************/
-   private static QRecord baseRow(SlackSendRequest request, String storedOwner, AuthorizedSend send, SlackEnums.Operation operation)
+   private static QRecord baseRow(SlackSendRequest request, String storedOwner, AuthorizedSend send, SlackEnums.Operation operation) throws QException
    {
-      String text = SlackService.escape(request.getText());
+      SlackTemplates.Content content = SlackAuthorizer.isOwnerless(storedOwner) ? SlackTemplates.render(request)
+         : SlackOwnerSession.call(storedOwner, () -> SlackTemplates.render(request));
+      String text = content.text();
+      if(text != null && text.length() > MAX_TEXT_LENGTH || content.blocks() != null && content.blocks().length() >= MAX_TEXT_LENGTH)
+      {
+         throw (new IllegalArgumentException("Slack content too large"));
+      }
       if(text != null && send.mentionPrefix() != null)
       {
          text = send.mentionPrefix() + text;
@@ -445,7 +486,8 @@ public final class SlackService
          .withValue("status", SlackEnums.MessageStatus.QUEUED.name())
          .withValue("category", request.getCategory())
          .withValue("text", text)
-         .withValue("blocksJson", request.getBlocksJson() == null || request.getBlocksJson().isBlank() ? null : request.getBlocksJson())
+         .withValue("blocksJson", content.blocks())
+         .withValue("templateName", request.getTemplateName())
          .withValue("idempotencyKey", request.getIdempotencyKey())
          .withValue("attemptCount", 0)
          .withValue("nextAttemptDate", now)

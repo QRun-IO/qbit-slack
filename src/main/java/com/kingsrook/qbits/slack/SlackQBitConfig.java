@@ -42,6 +42,12 @@ public class SlackQBitConfig implements QBitConfig
 {
    public static final Pattern ENV_NAME = Pattern.compile("^[A-Z_][A-Z0-9_]{0,99}$");
 
+   private String clientIdEnvName = "SLACK_CLIENT_ID";
+   private String clientSecretEnvName = "SLACK_CLIENT_SECRET";
+   private String signingSecretEnvName = "SLACK_SIGNING_SECRET";
+   private String oauthCallbackPath = "/qqq/hooks/slack/oauth/callback";
+   private Integer readinessIntervalMinutes = 15;
+   private List<String> phiPatterns = List.of("\\b\\d{3}-\\d{2}-\\d{4}\\b", "(?i)\\bMRN[:# ]?\\d{6,}\\b");
    private String backendName;
    private String schedulerName;
    private String bridgeProviderName = "slack";
@@ -76,6 +82,9 @@ public class SlackQBitConfig implements QBitConfig
    @Override
    public void validate(QInstance qInstance, List<String> errors)
    {
+      assertCondition(positive(readinessIntervalMinutes), "Slack qbit: readiness interval must be positive", errors);
+      assertCondition(oauthCallbackPath != null && oauthCallbackPath.matches("/qqq/hooks/slack/[a-zA-Z0-9/_-]+"), "Slack qbit: invalid OAuth callback path", errors);
+      assertCondition(java.util.Arrays.asList(clientIdEnvName, clientSecretEnvName, signingSecretEnvName).stream().allMatch(n -> n != null && ENV_NAME.matcher(n).matches()), "Slack qbit: invalid OAuth environment name", errors);
       assertCondition(backendName != null && !backendName.isBlank(), "Slack qbit: backendName is required", errors);
       assertCondition(schedulerName != null && !schedulerName.isBlank(), "Slack qbit: schedulerName is required", errors);
       assertCondition(bridgeProviderName != null && bridgeProviderName.matches("[a-zA-Z][a-zA-Z0-9_]*"), "Slack qbit: bridgeProviderName must be a simple name", errors);
@@ -658,6 +667,108 @@ public class SlackQBitConfig implements QBitConfig
    public SlackQBitConfig withRequestTimeoutSeconds(Integer requestTimeoutSeconds)
    {
       this.requestTimeoutSeconds = requestTimeoutSeconds;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Getter for clientIdEnvName.
+    *******************************************************************************/
+   public String getClientIdEnvName()
+   {
+      return (clientIdEnvName);
+   }
+
+   /*******************************************************************************
+    ** Fluent setter for clientIdEnvName.
+    *******************************************************************************/
+   public SlackQBitConfig withClientIdEnvName(String value)
+   {
+      clientIdEnvName = value;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Getter for clientSecretEnvName.
+    *******************************************************************************/
+   public String getClientSecretEnvName()
+   {
+      return (clientSecretEnvName);
+   }
+
+   /*******************************************************************************
+    ** Fluent setter for clientSecretEnvName.
+    *******************************************************************************/
+   public SlackQBitConfig withClientSecretEnvName(String value)
+   {
+      clientSecretEnvName = value;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Getter for signingSecretEnvName.
+    *******************************************************************************/
+   public String getSigningSecretEnvName()
+   {
+      return (signingSecretEnvName);
+   }
+
+   /*******************************************************************************
+    ** Fluent setter for signingSecretEnvName.
+    *******************************************************************************/
+   public SlackQBitConfig withSigningSecretEnvName(String value)
+   {
+      signingSecretEnvName = value;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Getter for oauthCallbackPath.
+    *******************************************************************************/
+   public String getOauthCallbackPath()
+   {
+      return (oauthCallbackPath);
+   }
+
+   /*******************************************************************************
+    ** Fluent setter for oauthCallbackPath.
+    *******************************************************************************/
+   public SlackQBitConfig withOauthCallbackPath(String value)
+   {
+      oauthCallbackPath = value;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Getter for readinessIntervalMinutes.
+    *******************************************************************************/
+   public Integer getReadinessIntervalMinutes()
+   {
+      return (readinessIntervalMinutes);
+   }
+
+   /*******************************************************************************
+    ** Fluent setter for readinessIntervalMinutes.
+    *******************************************************************************/
+   public SlackQBitConfig withReadinessIntervalMinutes(Integer value)
+   {
+      readinessIntervalMinutes = value;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Getter for phiPatterns.
+    *******************************************************************************/
+   public List<String> getPhiPatterns()
+   {
+      return (phiPatterns);
+   }
+
+   /*******************************************************************************
+    ** Fluent setter for phiPatterns.
+    *******************************************************************************/
+   public SlackQBitConfig withPhiPatterns(List<String> value)
+   {
+      phiPatterns = value;
       return (this);
    }
 }

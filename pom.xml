@@ -76,6 +76,16 @@
    <dependencies>
       <dependency>
          <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-middleware-javalin</artifactId>
+         <scope>provided</scope>
+      </dependency>
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-middleware-health</artifactId>
+         <optional>true</optional>
+      </dependency>
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
          <artifactId>qqq-backend-core</artifactId>
       </dependency>
 
