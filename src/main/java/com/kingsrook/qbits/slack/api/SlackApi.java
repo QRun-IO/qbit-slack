@@ -289,7 +289,7 @@ public final class SlackApi
       {
          return (null);
       }
-      return (new SlackSendRequest().withOwnerUserId(request.ownerUserId()).withTo(request.to()).withWorkspaceId(request.workspaceId())
+      return (new SlackSendRequest().withActions(request.actions()).withOwnerUserId(request.ownerUserId()).withTo(request.to()).withWorkspaceId(request.workspaceId())
          .withText(request.text()).withBlocksJson(request.blocksJson()).withTemplateName(request.templateName()).withVariables(request.variables())
          .withIdempotencyKey(request.idempotencyKey()).withCategory(request.category()).withPostAs(request.postAs() == null ? null : SlackEnums.PostAs.valueOf(request.postAs()))
          .withThreadOfMessageId(request.threadOfMessageId()).withLinkedRecord(request.linkedTableName(), request.linkedRecordId()).withSenderName(request.senderName())

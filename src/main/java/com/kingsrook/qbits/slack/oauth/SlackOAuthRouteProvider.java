@@ -46,6 +46,11 @@ public class SlackOAuthRouteProvider implements QJavalinRouteProviderInterface
    {
       QJavalinMetaData metadata = QJavalinMetaData.ofOrWithNew(instance);
       if(metadata.getAdditionalRouteProviderReferences() == null || metadata.getAdditionalRouteProviderReferences().stream()
+         .noneMatch(r -> com.kingsrook.qbits.slack.interactivity.SlackCallbackRouteProvider.class.getName().equals(r.getName())))
+      {
+         metadata.withAdditionalRouteProviderReference(new QCodeReference(com.kingsrook.qbits.slack.interactivity.SlackCallbackRouteProvider.class));
+      }
+      if(metadata.getAdditionalRouteProviderReferences() == null || metadata.getAdditionalRouteProviderReferences().stream()
          .noneMatch(r -> SlackOAuthRouteProvider.class.getName().equals(r.getName())))
       {
          metadata.withAdditionalRouteProviderReference(new QCodeReference(SlackOAuthRouteProvider.class));

@@ -448,4 +448,41 @@ public class SlackClient
          return (DEFAULT_RETRY_AFTER_SECONDS);
       }
    }
+
+
+
+   /*******************************************************************************
+    ** Ephemeral callback response without credentials or redirects. Test URLs must
+    ** be beneath the explicitly configured loopback API base, not just its host.
+    *******************************************************************************/
+   public SlackResponse respondEphemeral(String url, String text)
+   {
+      try
+      {
+         URI uri = URI.create(url);
+         URI api = URI.create(baseUrl);
+         boolean slack = "https".equals(uri.getScheme()) && "hooks.slack.com".equals(uri.getHost()) && uri.getPort() == -1;
+         boolean test = "http".equals(api.getScheme()) && java.util.List.of("127.0.0.1", "localhost", "[::1]").contains(api.getHost())
+            && java.util.Objects.equals(uri.getScheme(), api.getScheme()) && java.util.Objects.equals(uri.getHost(), api.getHost())
+            && uri.getPort() == api.getPort() && uri.getPath().startsWith(api.getPath().replaceAll("/+$", "") + "/");
+         if(uri.getUserInfo() != null || uri.getFragment() != null || !(slack || test))
+         {
+            return (SlackResponse.failure(0, "invalid_response_url"));
+         }
+         var response = http.send(HttpRequest.newBuilder(uri).timeout(requestTimeout).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(new JSONObject().put("response_type", "ephemeral").put("text", text).toString())).build(),
+            HttpResponse.BodyHandlers.discarding());
+         return (new SlackResponse(response.statusCode(), response.statusCode() >= 200 && response.statusCode() < 300, null, null, null, null));
+      }
+      catch(InterruptedException e)
+      {
+         Thread.currentThread().interrupt();
+         return (SlackResponse.failure(0, "response_interrupted"));
+      }
+      catch(Exception e)
+      {
+         return (SlackResponse.failure(0, "response_failed"));
+      }
+   }
+
 }
