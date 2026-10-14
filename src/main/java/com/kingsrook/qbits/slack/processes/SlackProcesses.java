@@ -63,6 +63,7 @@ public final class SlackProcesses
    public static final String DISCONNECT = "slack_disconnect";
    public static final String UNINSTALL = "slack_uninstall";
    public static final String READINESS = "slack_check_readiness";
+   public static final String CHECK_CHANNELS = "slack_check_channels";
    public static final String MAINTAIN = "slack_readiness";
    public static final String DISPATCH = "slack_dispatch";
 
@@ -101,7 +102,8 @@ public final class SlackProcesses
       }
       return (List.of(dispatch, readiness, connectAction(CONNECT, "Connect Slack"), connectAction(INSTALL, "Install for my organization"),
          action(TEST_MESSAGE, "Send me a test message", SlackTables.CONNECTION).withMinInputRecords(1).withMaxInputRecords(1), action(DISCONNECT, "Disconnect", SlackTables.CONNECTION),
-         action(UNINSTALL, "Uninstall", SlackTables.WORKSPACE), action(READINESS, "Check readiness", SlackTables.WORKSPACE)));
+         action(UNINSTALL, "Uninstall", SlackTables.WORKSPACE), action(READINESS, "Check readiness", SlackTables.WORKSPACE),
+         action(CHECK_CHANNELS, "Check channels", SlackTables.CHANNEL)));
    }
 
 
@@ -232,6 +234,11 @@ public final class SlackProcesses
       {
          for(QRecord row : input.getRecords())
          {
+            if(CHECK_CHANNELS.equals(input.getProcessName()))
+            {
+               checkChannel(row, output);
+               continue;
+            }
             switch(input.getProcessName())
             {
                case TEST_MESSAGE ->
@@ -258,6 +265,34 @@ public final class SlackProcesses
             lines.add(new ProcessSummaryLine(Status.OK, 1, "Record processed"));
             output.getRecords().add(row);
          }
+      }
+
+      /*******************************************************************************
+       ** Check one registered channel. A channel that needs attention is a
+       ** warning, and a problem with one row (for example its workspace token)
+       ** is an error for that row only, so it cannot stop the rest.
+       *******************************************************************************/
+      private void checkChannel(QRecord row, RunBackendStepOutput output) throws QException
+      {
+         if(!com.kingsrook.qqq.backend.core.context.QContext.getQSession().hasPermission("slack.admin"))
+         {
+            throw (new QException("Slack channel check is not permitted"));
+         }
+         String name = row.getValueString("name");
+         try
+         {
+            switch(SlackReadiness.channel(row.getValueInteger("id")))
+            {
+               case USABLE -> lines.add(new ProcessSummaryLine(Status.OK, 1, "Channel " + name + " is ready"));
+               case NEEDS_ATTENTION -> lines.add(new ProcessSummaryLine(Status.WARNING, 1, "Channel " + name + " needs attention: it is archived, not found, or the bot is not a member"));
+               default -> lines.add(new ProcessSummaryLine(Status.WARNING, 1, "Slack could not confirm channel " + name + "; try again later"));
+            }
+         }
+         catch(QException e)
+         {
+            lines.add(new ProcessSummaryLine(Status.ERROR, 1, "Channel " + name + " could not be checked: its workspace is unavailable"));
+         }
+         output.getRecords().add(row);
       }
 
       /*******************************************************************************

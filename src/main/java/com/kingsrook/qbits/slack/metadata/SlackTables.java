@@ -374,13 +374,13 @@ public final class SlackTables
          .withField(field("label", QFieldType.STRING).withMaxLength(500))
          .withField(field("workspaceId", QFieldType.INTEGER).withPossibleValueSourceName(WORKSPACE).withIsRequired(true))
          .withField(field("slackChannelId", QFieldType.STRING).withMaxLength(500))
-         .withField(field("slackChannelName", QFieldType.STRING).withMaxLength(500))
-         .withField(field("isPrivate", QFieldType.BOOLEAN).withDefaultValue(false))
-         .withField(field("botIsMember", QFieldType.BOOLEAN).withDefaultValue(false))
-         .withField(field("isArchived", QFieldType.BOOLEAN).withDefaultValue(false))
+         .withField(field("slackChannelName", QFieldType.STRING).withMaxLength(500).withIsEditable(false))
+         .withField(field("isPrivate", QFieldType.BOOLEAN).withDefaultValue(false).withIsEditable(false))
+         .withField(field("botIsMember", QFieldType.BOOLEAN).withDefaultValue(false).withIsEditable(false))
+         .withField(field("isArchived", QFieldType.BOOLEAN).withDefaultValue(false).withIsEditable(false))
          .withField(field("enabled", QFieldType.BOOLEAN).withDefaultValue(true))
-         .withField(field("description", QFieldType.TEXT))
-         .withField(field("checkedAt", QFieldType.DATE_TIME));
+         .withField(field("description", QFieldType.TEXT).withIsEditable(false))
+         .withField(field("checkedAt", QFieldType.DATE_TIME).withIsEditable(false));
       table.withRecordLabelFormatAndFields("%s", "name");
       table.withUniqueKey(new UniqueKey("workspaceId", "name"));
       table.withSection(SectionFactory.defaultT1("id", "name", "label", "workspaceId", "enabled"));
@@ -422,7 +422,7 @@ public final class SlackTables
       QTableMetaData table = base(config, TEMPLATE, "Templates")
          .withField(field("name", QFieldType.STRING).withIsRequired(true).withMaxLength(500))
          .withField(field("label", QFieldType.STRING).withMaxLength(500))
-         .withField(field("description", QFieldType.TEXT))
+         .withField(field("description", QFieldType.TEXT).withIsEditable(false))
          .withField(field("category", QFieldType.STRING).withMaxLength(500))
          .withField(field("enabled", QFieldType.BOOLEAN).withDefaultValue(true))
          .withField(field("tenantKey", QFieldType.STRING).withMaxLength(500))
