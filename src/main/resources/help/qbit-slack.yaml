@@ -1,53 +1,554 @@
 bundle: qbit-slack
-version: 1
+version: 0.1.0-SNAPSHOT
 layer: QBIT
-# Help for the Slack app and every slack_* table, in the QQQ help-bundle format
-# (qqq#1198). Each table entry says what the table is for and how its rows get
-# created, so an empty table explains itself. SlackHelp applies it until the core
-# HelpBundles registry ships in a QQQ release.
-# Summaries stay under 120 characters (SlackTablesGuardrailTest).
 entries:
-  - key: app:slack;slot:help
-    summary: "Send Slack messages from QQQ through a durable outbox, as the person who sent them."
-    content: |
-      Set up in this order: 1) Install the Slack app for your organization (Connections, "Install for my organization") so a Workspace row exists; 2) each person uses "Connect Slack" so messages go out as them; 3) register the channels and user groups your processes post to, then run "Check channels"; 4) review the built-in Templates. Every send is queued in Messages and retried; Attempts and Interactions are the audit trail. The Readiness section on the home shows what still needs attention.
+- key: app:slack;slot:help
+  summary: "Connect your Slack account, manage message destinations and review delivery results."
+  content: |
+    Start with **{{label:slack_install}}** in **{{label:slack_connection}}**, then use **{{label:slack_connect}}** to link your own account. Register the channels and user groups you need, and review **{{label:slack_template}}** before sending.
 
-  - key: table:slack_workspace;slot:help
-    summary: "A Slack workspace this system is installed in, with its bot token status and readiness."
-    content: |
-      **How rows get created:** an administrator runs "Install for my organization" (Connections) and approves the app in Slack; the OAuth callback creates the row and stores the bot token encrypted. Nothing is typed in by hand. Use "Check readiness" to re-check the bot token, scopes and registered channels, and "Uninstall" to remove the app.
-
-  - key: table:slack_connection;slot:help
-    summary: "A person's own link to a workspace, so their Slack messages are sent as them."
-    content: |
-      **How rows get created:** each user runs "Connect Slack" and approves access in Slack; the OAuth callback creates the row and stores their token encrypted. An administrator can see everyone's. "Send me a test message" checks it works, and "Disconnect" revokes it. A workspace must be installed first.
-
-  - key: table:slack_channel;slot:help
-    summary: "A Slack channel registered under a short name, so processes can post to it and see its status."
-    content: |
-      **How rows get created:** an administrator adds one with New: pick the workspace, give it a short name that senders use, and paste the Slack channel ID (open the channel in Slack, then About, then the ID at the bottom). Invite the bot with /invite @YourApp, then run "Check channels": it fills in the Slack name, private, bot is member, archived, purpose and checked time. Readiness re-checks enabled channels on a schedule, and messages are sent only to enabled channels the bot can post to.
-
-  - key: table:slack_user_group;slot:help
-    summary: "A Slack user group registered under a short name, mentioned when a message goes to the group."
-    content: |
-      **How rows get created:** an administrator adds one with New: pick the workspace, give it a short name, paste the Slack user group ID (starts with S) and the ID of the channel where the group is mentioned. The handle is filled in by Check readiness when the app has the optional usergroups:read scope, and then shows in the mention as @handle. A group without a user group ID or channel cannot be sent to.
-
-  - key: table:slack_template;slot:help
-    summary: "Message templates (text and Slack blocks) with declared variables, used by name when sending."
-    content: |
-      **How rows get created:** the qbit adds three built-ins at startup and on each readiness run: notification, digest and delivery (never overwritten once you edit them). Administrators add their own with New: variables must be declared, links must be URLs, and nothing classified as PHI or PII is allowed. A sender names the template and passes variables.
-
-  - key: table:slack_message;slot:help
-    summary: "The outbox: every Slack message queued, sent, retried or dead-lettered, with who sent it."
-    content: |
-      **How rows get created:** automatically. Anything that sends to Slack (a process, an alert, a delivery destination, a test message) queues a row here first as its owner; the dispatcher then posts it and records the outcome. It starts empty on a new installation and is read-only history; nothing is typed in by hand.
-
-  - key: table:slack_message_attempt;slot:help
-    summary: "One row per delivery attempt of a message: outcome, Slack error and timing."
-    content: |
-      **How rows get created:** automatically, by the dispatcher, each time it tries to post a message. Use it to see why a message is retrying or failed. It is audit history and is never edited.
-
-  - key: table:slack_interaction;slot:help
-    summary: "Audit of clicks on message buttons and Slack events, and what each one did."
-    content: |
-      **How rows get created:** automatically, when someone clicks a button on a Slack message or Slack sends a revocation event to the callback URL. Each row records who acted, the action and the outcome (the action runs as the clicking user). It is audit history and is never edited.
+    Use **{{label:slack_message}}** to follow delivery progress and **{{label:slack_message_attempt}}** to investigate failures. Your home page shows your connections and recent deliveries. Administrators can also review workspace readiness, queued messages and recent failures.
+- key: table:slack_workspace;slot:help
+  summary: "Slack workspaces installed for your organization, with connection health and readiness."
+  content: |
+    Use **{{label:slack_install}}** from **{{label:slack_connection}}** to create a workspace by approving access in Slack. You do not create workspace records by hand. Review **{{label:slack_check_readiness}}** results to identify missing access or channel setup. Administrators can use **{{label:slack_uninstall}}** to remove the installation.
+- key: table:slack_workspace;field:id
+  summary: "The unique identifier for this record."
+- key: table:slack_workspace;field:createDate
+  summary: "When this record was created."
+- key: table:slack_workspace;field:modifyDate
+  summary: "When this record was last updated."
+- key: table:slack_workspace;field:teamId
+  summary: "The identifier Slack assigns to the workspace."
+- key: table:slack_workspace;field:teamName
+  summary: "The workspace name returned by Slack."
+- key: table:slack_workspace;field:enterpriseId
+  summary: "The Slack enterprise identifier associated with the installation."
+- key: table:slack_workspace;field:appId
+  summary: "The identifier of the installed Slack app."
+- key: table:slack_workspace;field:tenantKey
+  summary: "The organization that owns this configuration."
+- key: table:slack_workspace;field:installedByUserId
+  summary: "The account that installed the Slack app."
+- key: table:slack_workspace;field:installedAt
+  summary: "When the Slack app was installed."
+- key: table:slack_workspace;field:botUserId
+  summary: "The Slack user identifier for the installed bot."
+- key: table:slack_workspace;field:botScopes
+  summary: "The permissions granted to the Slack bot."
+- key: table:slack_workspace;field:botTokenFingerprint
+  summary: "A credential identifier used to compare bot credentials without revealing them."
+- key: table:slack_workspace;field:status
+  summary: "The current state of the Slack installation."
+- key: table:slack_workspace;field:readinessStatus
+  summary: "The result of the latest workspace readiness check."
+- key: table:slack_workspace;field:readinessCheckedAt
+  summary: "When workspace readiness was last checked."
+- key: table:slack_workspace;field:readinessSummary
+  summary: "A short explanation of the latest workspace readiness result."
+- key: table:slack_workspace;field:health
+  summary: "Whether recent delivery failures have made the workspace unhealthy."
+- key: table:slack_workspace;field:consecutiveFailures
+  summary: "The number of consecutive delivery failures for the workspace."
+- key: table:slack_workspace;field:ratePerMinute
+  summary: "The configured maximum number of message sends per minute for this workspace."
+- key: table:slack_workspace;field:botToken
+  summary: "The protected credential used by the Slack bot."
+- key: table:slack_workspace;section:identity
+  summary: "The identifying details and main settings for this record."
+- key: table:slack_workspace;section:data
+  summary: "Additional configuration and operational details for this record."
+- key: table:slack_workspace;section:dates
+  summary: "When this record was created and last updated."
+- key: possibleValueSource:slack_workspace;slot:help
+  summary: "Available workspace records you can reference."
+- key: table:slack_connection;slot:help
+  summary: "Links between your account and Slack, used to send messages with your Slack identity."
+  content: |
+    Use **{{label:slack_connect}}** and approve access in Slack to create your connection. Your organization must install the app first. Select your connection and use **{{label:slack_test_message}}** to check delivery. Use **{{label:slack_disconnect}}** when you want to revoke the link. Administrators can review connections for other users.
+- key: table:slack_connection;field:id
+  summary: "The unique identifier for this record."
+- key: table:slack_connection;field:createDate
+  summary: "When this record was created."
+- key: table:slack_connection;field:modifyDate
+  summary: "When this record was last updated."
+- key: table:slack_connection;field:userId
+  summary: "The application account associated with this Slack activity."
+- key: table:slack_connection;field:workspaceId
+  summary: "The Slack workspace associated with this record."
+- key: table:slack_connection;field:slackUserId
+  summary: "The user identifier supplied by Slack."
+- key: table:slack_connection;field:slackUserName
+  summary: "The connected user name returned by Slack."
+- key: table:slack_connection;field:userTokenFingerprint
+  summary: "A credential identifier used to compare user credentials without revealing them."
+- key: table:slack_connection;field:userScopes
+  summary: "The permissions granted by the connected Slack user."
+- key: table:slack_connection;field:status
+  summary: "The current state of the personal Slack connection."
+- key: table:slack_connection;field:connectedAt
+  summary: "When the Slack account was connected."
+- key: table:slack_connection;field:lastVerifiedAt
+  summary: "When the connection was last verified."
+- key: table:slack_connection;field:revokedAt
+  summary: "When access through this connection was revoked."
+- key: table:slack_connection;field:lastError
+  summary: "The latest recorded error explanation."
+- key: table:slack_connection;field:userToken
+  summary: "The protected credential for the connected Slack account."
+- key: table:slack_connection;section:identity
+  summary: "The identifying details and main settings for this record."
+- key: table:slack_connection;section:data
+  summary: "Additional configuration and operational details for this record."
+- key: table:slack_connection;section:dates
+  summary: "When this record was created and last updated."
+- key: possibleValueSource:slack_connection;slot:help
+  summary: "Available connection records you can reference."
+- key: table:slack_channel;slot:help
+  summary: "Named Slack channels available as message destinations, with their latest access checks."
+  content: |
+    Add a registered channel by choosing a workspace, entering a short **Name** and supplying its **Slack channel id**. Invite the app to the channel in Slack, then run **{{label:slack_check_channels}}** on the selected registered channels. Review the retrieved name, membership and archive status before using the channel for delivery. Disable channels you no longer want senders to use.
+- key: table:slack_channel;field:id
+  summary: "The unique identifier for this record."
+- key: table:slack_channel;field:createDate
+  summary: "When this record was created."
+- key: table:slack_channel;field:modifyDate
+  summary: "When this record was last updated."
+- key: table:slack_channel;field:name
+  summary: "The short name used to select this configuration."
+- key: table:slack_channel;field:label
+  summary: "The display name for this configuration."
+- key: table:slack_channel;field:workspaceId
+  summary: "The Slack workspace associated with this record."
+- key: table:slack_channel;field:slackChannelId
+  summary: "The destination channel identifier supplied by Slack."
+- key: table:slack_channel;field:slackChannelName
+  summary: "The channel name retrieved from Slack."
+- key: table:slack_channel;field:isPrivate
+  summary: "Whether Slack reports this channel as private."
+- key: table:slack_channel;field:botIsMember
+  summary: "Whether the installed bot belongs to this channel."
+- key: table:slack_channel;field:isArchived
+  summary: "Whether Slack reports this channel as archived."
+- key: table:slack_channel;field:enabled
+  summary: "Whether this configuration is available for use."
+- key: table:slack_channel;field:description
+  summary: "The channel purpose retrieved from Slack."
+- key: table:slack_channel;field:checkedAt
+  summary: "When the channel details were last checked against Slack."
+- key: table:slack_channel;section:identity
+  summary: "The identifying details and main settings for this record."
+- key: table:slack_channel;section:data
+  summary: "Additional configuration and operational details for this record."
+- key: table:slack_channel;section:dates
+  summary: "When this record was created and last updated."
+- key: possibleValueSource:slack_channel;slot:help
+  summary: "Available registered channel records you can reference."
+- key: table:slack_user_group;slot:help
+  summary: "Named Slack user groups that messages can mention in a specified channel."
+  content: |
+    Add a group by choosing a workspace and entering a short **Name**, the **Slack usergroup id** and the destination **Channel id**. Messages to the group mention it in that channel. **{{label:slack_check_readiness}}** can retrieve the group handle when the installation has permission to read user groups.
+- key: table:slack_user_group;field:id
+  summary: "The unique identifier for this record."
+- key: table:slack_user_group;field:createDate
+  summary: "When this record was created."
+- key: table:slack_user_group;field:modifyDate
+  summary: "When this record was last updated."
+- key: table:slack_user_group;field:name
+  summary: "The short name used to select this configuration."
+- key: table:slack_user_group;field:label
+  summary: "The display name for this configuration."
+- key: table:slack_user_group;field:workspaceId
+  summary: "The Slack workspace associated with this record."
+- key: table:slack_user_group;field:slackUsergroupId
+  summary: "The identifier Slack assigns to the user group."
+- key: table:slack_user_group;field:handle
+  summary: "The Slack handle used when mentioning this group."
+- key: table:slack_user_group;field:channelId
+  summary: "The Slack channel where messages mention this group."
+- key: table:slack_user_group;field:enabled
+  summary: "Whether this configuration is available for use."
+- key: table:slack_user_group;section:identity
+  summary: "The identifying details and main settings for this record."
+- key: table:slack_user_group;section:data
+  summary: "Additional configuration and operational details for this record."
+- key: table:slack_user_group;section:dates
+  summary: "When this record was created and last updated."
+- key: possibleValueSource:slack_user_group;slot:help
+  summary: "Available user group records you can reference."
+- key: table:slack_template;slot:help
+  summary: "Reusable Slack message text and layouts with declared input values."
+  content: |
+    Review the built-in notification, digest and delivery templates, or add your own. Give each template a unique **Name** that senders can select. Declare the values it accepts in **Variables schema** and use them in **Text** or **Blocks template**. Existing templates are preserved when the built-ins are added again. Do not include personal or health information.
+- key: table:slack_template;field:id
+  summary: "The unique identifier for this record."
+- key: table:slack_template;field:createDate
+  summary: "When this record was created."
+- key: table:slack_template;field:modifyDate
+  summary: "When this record was last updated."
+- key: table:slack_template;field:name
+  summary: "The short name used to select this configuration."
+- key: table:slack_template;field:label
+  summary: "The display name for this configuration."
+- key: table:slack_template;field:description
+  summary: "An explanation of the intended use of this template."
+- key: table:slack_template;field:category
+  summary: "The category assigned to this message or template."
+- key: table:slack_template;field:enabled
+  summary: "Whether this configuration is available for use."
+- key: table:slack_template;field:tenantKey
+  summary: "The organization that owns this configuration."
+- key: table:slack_template;field:text
+  summary: "The message text sent to Slack."
+- key: table:slack_template;field:blocksTemplate
+  summary: "The reusable Slack message layout, with placeholders for declared values."
+- key: table:slack_template;field:variablesSchema
+  summary: "The definitions and restrictions for values accepted by this template."
+  content: |
+    Declare every value your template accepts before using it in the message text or layout. These definitions control which inputs are valid and how they may be used. Keep personal and health information out of template values, and supply links as URLs rather than arbitrary text.
+- key: table:slack_template;section:identity
+  summary: "The identifying details and main settings for this record."
+- key: table:slack_template;section:data
+  summary: "Additional configuration and operational details for this record."
+- key: table:slack_template;section:dates
+  summary: "When this record was created and last updated."
+- key: possibleValueSource:slack_template;slot:help
+  summary: "Available template records you can reference."
+- key: table:slack_message;slot:help
+  summary: "Queued Slack messages and their delivery history, including retries and failures."
+  content: |
+    Open a message to review its destination, sending identity and delivery status. Messages are created automatically when a process, alert, delivery or test requests a send. You do not add or edit this history by hand. Review **{{label:slack_message_attempt}}** for delivery errors.
+- key: table:slack_message;field:id
+  summary: "The unique identifier for this record."
+- key: table:slack_message;field:createDate
+  summary: "When this record was created."
+- key: table:slack_message;field:modifyDate
+  summary: "When this record was last updated."
+- key: table:slack_message;field:ownerUserId
+  summary: "The application account responsible for sending this message."
+- key: table:slack_message;field:workspaceId
+  summary: "The Slack workspace associated with this record."
+- key: table:slack_message;field:connectionId
+  summary: "The personal Slack connection used for this message."
+- key: table:slack_message;field:postAs
+  summary: "Whether this message is sent as the bot or a connected user."
+- key: table:slack_message;field:operation
+  summary: "Whether the request posts a message, updates one or uploads a file."
+- key: table:slack_message;field:targetType
+  summary: "The kind of recipient or destination for this message."
+- key: table:slack_message;field:targetRef
+  summary: "The requested recipient or destination reference."
+- key: table:slack_message;field:slackChannelId
+  summary: "The destination channel identifier supplied by Slack."
+- key: table:slack_message;field:channelLabel
+  summary: "The display name recorded for the destination channel."
+- key: table:slack_message;field:status
+  summary: "The current delivery state, from queuing through completion or failure."
+- key: table:slack_message;field:category
+  summary: "The category assigned to this message or template."
+- key: table:slack_message;field:templateName
+  summary: "The name of the template used to prepare the message."
+- key: table:slack_message;field:text
+  summary: "The message text sent to Slack."
+- key: table:slack_message;field:blocksJson
+  summary: "The prepared Slack message layout sent with this request."
+- key: table:slack_message;field:variablesSnapshot
+  summary: "The template values captured when the message was prepared."
+- key: table:slack_message;field:idempotencyKey
+  summary: "A unique request reference that prevents the same send from being queued twice."
+  content: |
+    Use this reference to identify repeated requests for the same send. The message queue requires it to be unique, so retrying a request with the same reference does not create another queued message. This prevents duplicate requests; review the delivery status separately to confirm whether Slack received the message.
+- key: table:slack_message;field:parentMessageId
+  summary: "The earlier message this reply waits for before it can be delivered."
+- key: table:slack_message;field:threadTs
+  summary: "The Slack identifier of the conversation thread."
+- key: table:slack_message;field:targetMessageId
+  summary: "The existing message that this request updates."
+- key: table:slack_message;field:attachmentStorageRef
+  summary: "The stored file reference used to retrieve the attachment."
+- key: table:slack_message;field:attachmentStorageTable
+  summary: "The storage collection holding the attachment."
+- key: table:slack_message;field:attachmentName
+  summary: "The name of the attached file."
+- key: table:slack_message;field:attachmentBytes
+  summary: "The size of the attachment in bytes."
+- key: table:slack_message;field:slackFileId
+  summary: "The identifier Slack returned for the uploaded file."
+- key: table:slack_message;field:fileReconcileRequired
+  summary: "Whether an uncertain file upload needs reconciliation before another attempt."
+  content: |
+    A file request may reach Slack even when its response is lost. This flag indicates that the sender must check what happened before trying the upload again. Review the file identifier and attempt history when investigating the message, so an uncertain result is not mistaken for a confirmed failure.
+- key: table:slack_message;field:slackTs
+  summary: "The identifier Slack returned for the posted message."
+- key: table:slack_message;field:permalink
+  summary: "A direct link to the message in Slack."
+- key: table:slack_message;field:attemptCount
+  summary: "The number of delivery attempts recorded for this message."
+- key: table:slack_message;field:nextAttemptDate
+  summary: "When this message next becomes eligible for a delivery attempt."
+- key: table:slack_message;field:leaseExpiresDate
+  summary: "When the current delivery worker loses its exclusive claim on the message."
+- key: table:slack_message;field:lastErrorCode
+  summary: "The code for the latest delivery error."
+- key: table:slack_message;field:lastError
+  summary: "The latest recorded error explanation."
+- key: table:slack_message;field:sentDate
+  summary: "When delivery was recorded as successful."
+- key: table:slack_message;field:deadLetterDate
+  summary: "When automatic delivery attempts stopped for this message."
+- key: table:slack_message;field:linkedTableName
+  summary: "The source collection associated with this message."
+- key: table:slack_message;field:linkedRecordId
+  summary: "The source record associated with this message."
+- key: table:slack_message;field:senderName
+  summary: "The sender name recorded with this message."
+- key: table:slack_message;field:deliveryLogId
+  summary: "The related delivery log reference."
+- key: table:slack_message;section:identity
+  summary: "The identifying details and main settings for this record."
+- key: table:slack_message;section:data
+  summary: "Additional configuration and operational details for this record."
+- key: table:slack_message;section:dates
+  summary: "When this record was created and last updated."
+- key: possibleValueSource:slack_message;slot:help
+  summary: "Available message records you can reference."
+- key: table:slack_message_attempt;slot:help
+  summary: "Individual attempts to deliver a Slack message, with outcomes, errors and timing."
+  content: |
+    Use these records to investigate a message that is waiting to retry or has failed. Each delivery attempt records its outcome, timing and any error returned. Follow **Message id** to the related message for its destination and overall status. Attempt records are created automatically and cannot be edited.
+- key: table:slack_message_attempt;field:id
+  summary: "The unique identifier for this record."
+- key: table:slack_message_attempt;field:createDate
+  summary: "When this record was created."
+- key: table:slack_message_attempt;field:modifyDate
+  summary: "When this record was last updated."
+- key: table:slack_message_attempt;field:messageId
+  summary: "The message associated with this record."
+- key: table:slack_message_attempt;field:attemptNumber
+  summary: "The sequence number of this delivery attempt."
+- key: table:slack_message_attempt;field:outcome
+  summary: "The result of this individual delivery attempt."
+- key: table:slack_message_attempt;field:errorCode
+  summary: "The error code recorded for this delivery attempt."
+- key: table:slack_message_attempt;field:httpStatus
+  summary: "The response status returned by the Slack request."
+- key: table:slack_message_attempt;field:retryAfterSeconds
+  summary: "The number of seconds Slack asked the sender to wait before retrying."
+- key: table:slack_message_attempt;field:postedAs
+  summary: "Whether the attempt used the bot or a connected user."
+- key: table:slack_message_attempt;field:claimedBy
+  summary: "The delivery worker that claimed this attempt."
+- key: table:slack_message_attempt;field:startDate
+  summary: "When this delivery attempt started."
+- key: table:slack_message_attempt;field:endDate
+  summary: "When this delivery attempt ended."
+- key: table:slack_message_attempt;field:error
+  summary: "The recorded explanation of the failure."
+- key: table:slack_message_attempt;section:identity
+  summary: "The identifying details and main settings for this record."
+- key: table:slack_message_attempt;section:data
+  summary: "Additional configuration and operational details for this record."
+- key: table:slack_message_attempt;section:dates
+  summary: "When this record was created and last updated."
+- key: possibleValueSource:slack_message_attempt;slot:help
+  summary: "Available message attempt records you can reference."
+- key: table:slack_workspace;section:connections
+  summary: "Personal Slack connections for this workspace."
+- key: table:slack_workspace;section:channels
+  summary: "Registered channels belonging to this workspace."
+- key: table:slack_workspace;section:groups
+  summary: "User groups registered for this workspace."
+- key: table:slack_message;section:attempts
+  summary: "Delivery attempts recorded for this message."
+- key: possibleValueSource:slack_workspace_status;slot:help
+  summary: "The available states of a Slack installation."
+- key: possibleValueSource:slack_connection_status;slot:help
+  summary: "The available states of a personal Slack connection."
+- key: possibleValueSource:slack_readiness_status;slot:help
+  summary: "The possible results of a workspace readiness check."
+- key: possibleValueSource:slack_health_status;slot:help
+  summary: "The available workspace delivery health states."
+- key: possibleValueSource:slack_message_status;slot:help
+  summary: "The available message delivery states."
+- key: possibleValueSource:slack_message_operation;slot:help
+  summary: "The supported message operations: post, update and file upload."
+- key: possibleValueSource:slack_target_type;slot:help
+  summary: "The supported Slack recipient and destination types."
+- key: possibleValueSource:slack_post_as;slot:help
+  summary: "The available sending identities: bot or connected user."
+- key: possibleValueSource:slack_attempt_outcome;slot:help
+  summary: "The possible results of a single delivery attempt."
+- key: widget:slackHome;slot:label
+  summary: "Your Slack connections and their current status."
+- key: widget:slackHomeDeliveries;slot:label
+  summary: "Your Slack delivery totals for the last 24 hours."
+- key: widget:slackHomeRecent;slot:label
+  summary: "Your most recent Slack deliveries."
+- key: widget:slackHomeReadiness;slot:label
+  summary: "Workspace readiness results available to administrators."
+- key: widget:slackHomeOutbox;slot:label
+  summary: "Totals for queued Slack messages and other delivery states."
+- key: widget:slackHomeFailures;slot:label
+  summary: "Recent Slack delivery failures available to administrators."
+- key: widget:slack_connection_children;slot:label
+  summary: "Personal Slack connections for this workspace."
+- key: widget:slack_channel_children;slot:label
+  summary: "Channels registered for this workspace."
+- key: widget:slack_user_group_children;slot:label
+  summary: "User groups registered for this workspace."
+- key: widget:slack_message_children;slot:label
+  summary: "Messages associated with this workspace."
+- key: widget:slack_message_attempt_children;slot:label
+  summary: "Delivery attempts for this message."
+- key: process:slack_connect;slot:help
+  summary: "Link your account to Slack so you can send messages with your Slack identity."
+  content: |
+    Use **{{label:slack_connect}}** in **{{label:slack_connection}}** to obtain a Slack authorization link. Open the link and approve the requested access in Slack. Your workspace must already have the app installed. After approval, review your connection and use **{{label:slack_test_message}}** to check it.
+- key: process:slack_install;slot:help
+  summary: "Install the Slack app for your organization through Slack authorization."
+  content: |
+    Use **{{label:slack_install}}** in **{{label:slack_connection}}** to obtain the installation link. Open it in Slack and approve access for the intended workspace. Approval creates the workspace record and stores the protected bot credential. You need permission to install the app; individual users then connect their own accounts.
+- key: process:slack_test_message;slot:help
+  summary: "Queue a test message to your own Slack account using the selected connection."
+  content: |
+    Select one of your own records in **{{label:slack_connection}}**, then choose **{{label:slack_test_message}}**. Review the selection before continuing. You need permission to send messages. The action queues a test for delivery; check **{{label:slack_message}}** and its attempts if the test does not arrive in Slack.
+- key: process:slack_disconnect;slot:help
+  summary: "Revoke the selected personal Slack connections."
+  content: |
+    Select the connections you want to revoke and choose **{{label:slack_disconnect}}**. Review the selected records before continuing. You can disconnect your own account with connection permission; administrators can manage other connections they can access. Use **{{label:slack_connect}}** again if you later need to restore your personal connection.
+- key: process:slack_uninstall;slot:help
+  summary: "Remove the Slack app installation for the selected workspaces."
+  content: |
+    As an administrator, select the workspace installations you want to remove and choose **{{label:slack_uninstall}}**. Review the selected records before continuing. This action removes the workspace installation, rather than just disconnecting your own account. Use **{{label:slack_disconnect}}** in **{{label:slack_connection}}** when you only want to revoke a personal connection.
+- key: process:slack_check_readiness;slot:help
+  summary: "Check workspace setup, permissions and registered Slack destinations."
+  content: |
+    Select a workspace and choose **{{label:slack_check_readiness}}** to refresh the readiness information. Review the selection before continuing. You need administrator access to run this check. Inspect the resulting status and summary, and review registered channels when access or membership needs attention before relying on message delivery.
+- key: process:slack_readiness;slot:help
+  summary: "Refresh Slack readiness and add any missing built-in templates."
+  content: |
+    This scheduled action refreshes deployment and workspace readiness and adds missing built-in templates. Your edits to existing templates are preserved. Review **Workspace readiness** on the Slack home page to see issues that need attention. Administrators can also use **{{label:slack_check_readiness}}** from **{{label:slack_workspace}}** when they need a fresh check.
+- key: process:slack_dispatch;slot:help
+  summary: "Process Slack messages that are due for delivery and record the results."
+  content: |
+    This scheduled action picks up messages that are due for delivery and attempts to send them to Slack. Review **{{label:slack_message}}** for the current delivery state and **{{label:slack_message_attempt}}** for individual results and errors. A queued request is not proof of delivery; check its recorded result when investigating a missing message.
+- key: table:slack_interaction;slot:help
+  summary: "Recorded Slack button interactions, with their processing results."
+  content: |
+    Review **Interactions** on a message to see who acted and whether the action completed. These records are created automatically when Slack sends button interactions. You do not add or edit this audit history. Button actions run with the clicking user's permissions.
+- key: process:slack_check_channels;slot:help
+  summary: "Refresh the Slack details and access status of selected registered channels."
+  content: |
+    Select records in **{{label:slack_channel}}** and choose **{{label:slack_check_channels}}**. As an administrator, review the selection before continuing. The check updates the channel name, privacy, membership, archive status, purpose and check time. Review warnings for channels that need attention and retry later if Slack could not confirm their status.
+- key: possibleValueSource:slack_interaction;slot:help
+  summary: "Recorded Slack interactions you can reference."
+- key: possibleValueSource:slack_interaction_outcome;slot:help
+  summary: "The possible processing results for a Slack interaction."
+- key: widget:slack_interaction_children;slot:label
+  summary: "Slack interactions recorded for this message."
+- key: table:slack_message;section:interactions
+  summary: "Button clicks and their processing results for this message."
+- key: table:slack_interaction;field:id
+  summary: "The unique identifier for this record."
+- key: table:slack_interaction;field:createDate
+  summary: "When this record was created."
+- key: table:slack_interaction;field:modifyDate
+  summary: "When this record was last updated."
+- key: table:slack_interaction;field:workspaceId
+  summary: "The Slack workspace associated with this interaction."
+- key: table:slack_interaction;field:messageId
+  summary: "The message associated with this interaction."
+- key: table:slack_interaction;field:teamId
+  summary: "The workspace identifier supplied by Slack."
+- key: table:slack_interaction;field:slackUserId
+  summary: "The Slack user who performed the action."
+- key: table:slack_interaction;field:userId
+  summary: "The application account associated with this action."
+- key: table:slack_interaction;field:actionName
+  summary: "The action requested by the Slack interaction."
+- key: table:slack_interaction;field:deliveryKey
+  summary: "The unique delivery reference used to recognize repeated Slack requests."
+- key: table:slack_interaction;field:error
+  summary: "The recorded explanation of a processing failure."
+- key: table:slack_interaction;field:outcome
+  summary: "The processing result of this interaction."
+- key: table:slack_interaction;field:completedDate
+  summary: "When processing of this interaction completed."
+- key: table:slack_interaction;section:identity
+  summary: "The interaction identity, related records and processing result."
+- key: table:slack_interaction;section:data
+  summary: "Additional action details and processing information."
+- key: table:slack_interaction;section:dates
+  summary: "When this record was created and last updated."
+- key: process:slack_workspace.bulkEdit;slot:help
+  summary: "Update editable fields on selected records together."
+  content: |
+    Select the records you want to change in **{{label:slack_workspace}}**. Choose the editable fields and values, review the proposed changes, then continue. Check the result for records that could not be updated.
+- key: process:slack_workspace.bulkEditWithFile;slot:help
+  summary: "Update existing records using values from an uploaded file."
+  content: |
+    Use **{{label:slack_workspace.bulkEditWithFile}}** to upload changes for existing records. Map your file columns to the matching record identifier and editable fields. Review the proposed updates before continuing, then check the result for errors.
+- key: process:slack_workspace.bulkDelete;slot:help
+  summary: "Delete selected records from the application."
+  content: |
+    Select the records you intend to remove from **{{label:slack_workspace}}**. Review the selection before continuing and check the result for any records that could not be deleted. To revoke access in Slack, use **{{label:slack_uninstall}}** before deleting the record.
+- key: process:slack_connection.bulkEdit;slot:help
+  summary: "Update editable fields on selected records together."
+  content: |
+    Select the records you want to change in **{{label:slack_connection}}**. Choose the editable fields and values, review the proposed changes, then continue. Check the result for records that could not be updated.
+- key: process:slack_connection.bulkEditWithFile;slot:help
+  summary: "Update existing records using values from an uploaded file."
+  content: |
+    Use **{{label:slack_connection.bulkEditWithFile}}** to upload changes for existing records. Map your file columns to the matching record identifier and editable fields. Review the proposed updates before continuing, then check the result for errors.
+- key: process:slack_connection.bulkDelete;slot:help
+  summary: "Delete selected records from the application."
+  content: |
+    Select the records you intend to remove from **{{label:slack_connection}}**. Review the selection before continuing and check the result for any records that could not be deleted. To revoke access in Slack, use **{{label:slack_disconnect}}** before deleting the record.
+- key: process:slack_channel.bulkEdit;slot:help
+  summary: "Update editable fields on selected records together."
+  content: |
+    Select the records you want to change in **{{label:slack_channel}}**. Choose the editable fields and values, review the proposed changes, then continue. Check the result for records that could not be updated.
+- key: process:slack_channel.bulkEditWithFile;slot:help
+  summary: "Update existing records using values from an uploaded file."
+  content: |
+    Use **{{label:slack_channel.bulkEditWithFile}}** to upload changes for existing records. Map your file columns to the matching record identifier and editable fields. Review the proposed updates before continuing, then check the result for errors.
+- key: process:slack_channel.bulkDelete;slot:help
+  summary: "Delete selected records from the application."
+  content: |
+    Select the records you intend to remove from **{{label:slack_channel}}**. Review the selection before continuing and check the result for any records that could not be deleted.
+- key: process:slack_channel.bulkInsert;slot:help
+  summary: "Add records from an uploaded file."
+  content: |
+    Use **{{label:slack_channel.bulkInsert}}** to add records to **{{label:slack_channel}}** from a file. Map the columns to the required fields, review the proposed records and correct validation errors before continuing. Check the results after the import.
+- key: process:slack_user_group.bulkEdit;slot:help
+  summary: "Update editable fields on selected records together."
+  content: |
+    Select the records you want to change in **{{label:slack_user_group}}**. Choose the editable fields and values, review the proposed changes, then continue. Check the result for records that could not be updated.
+- key: process:slack_user_group.bulkEditWithFile;slot:help
+  summary: "Update existing records using values from an uploaded file."
+  content: |
+    Use **{{label:slack_user_group.bulkEditWithFile}}** to upload changes for existing records. Map your file columns to the matching record identifier and editable fields. Review the proposed updates before continuing, then check the result for errors.
+- key: process:slack_user_group.bulkDelete;slot:help
+  summary: "Delete selected records from the application."
+  content: |
+    Select the records you intend to remove from **{{label:slack_user_group}}**. Review the selection before continuing and check the result for any records that could not be deleted.
+- key: process:slack_user_group.bulkInsert;slot:help
+  summary: "Add records from an uploaded file."
+  content: |
+    Use **{{label:slack_user_group.bulkInsert}}** to add records to **{{label:slack_user_group}}** from a file. Map the columns to the required fields, review the proposed records and correct validation errors before continuing. Check the results after the import.
+- key: process:slack_template.bulkEdit;slot:help
+  summary: "Update editable fields on selected records together."
+  content: |
+    Select the records you want to change in **{{label:slack_template}}**. Choose the editable fields and values, review the proposed changes, then continue. Check the result for records that could not be updated.
+- key: process:slack_template.bulkEditWithFile;slot:help
+  summary: "Update existing records using values from an uploaded file."
+  content: |
+    Use **{{label:slack_template.bulkEditWithFile}}** to upload changes for existing records. Map your file columns to the matching record identifier and editable fields. Review the proposed updates before continuing, then check the result for errors.
+- key: process:slack_template.bulkDelete;slot:help
+  summary: "Delete selected records from the application."
+  content: |
+    Select the records you intend to remove from **{{label:slack_template}}**. Review the selection before continuing and check the result for any records that could not be deleted.
+- key: process:slack_template.bulkInsert;slot:help
+  summary: "Add records from an uploaded file."
+  content: |
+    Use **{{label:slack_template.bulkInsert}}** to add records to **{{label:slack_template}}** from a file. Map the columns to the required fields, review the proposed records and correct validation errors before continuing. Check the results after the import.
