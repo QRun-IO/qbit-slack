@@ -21,21 +21,23 @@
 package com.kingsrook.qbits.slack.bridge;
 
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import com.kingsrook.qbits.slack.outbox.SlackSendRequest;
 import com.kingsrook.qbits.slack.outbox.SlackSendResult;
 import com.kingsrook.qbits.slack.outbox.SlackService;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
-import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
-import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.Content;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.MultiParty;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.Party;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageInput;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageOutput;
+import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageStatus;
+import com.kingsrook.qqq.backend.core.modules.messaging.MessagingProviderCapability;
 import com.kingsrook.qqq.backend.core.modules.messaging.MessagingProviderInterface;
-import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -43,22 +45,15 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  ** producer under the config's bridgeProviderName), so any process sends with
  ** core SendMessageAction and depends only on core (docs/DESIGN.md 4.2).
  **
- ** How the QQQ 4.1.0-RC.6 input maps:
- ** - to: a Party's address is a Slack address (me, user:&lt;id&gt;,
- **   channel:&lt;workspace&gt;/&lt;channel&gt;, channel:&lt;name&gt;, #&lt;name&gt;,
- **   group:&lt;name&gt;); a MultiParty gives one outbox row per recipient;
- ** - subject: the bold first line of the message;
- ** - contentList: the bodies, one per line, as plain text (the service escapes it);
- ** - the owner is the current session's user, so an unconnected user, another
- **   user's channel or another tenant's workspace is refused.
- **
- ** A refusal is a QUserFacingException with the reason. RC.6 has no REFUSED or
- ** QUEUED status on its output and no idempotency field, so the status is only
- ** logged here.
+ ** RC.7 rich input maps directly to the outbox request. The owner remains the
+ ** session user. For multiple recipients, messageId is a list of accepted IDs,
+ ** and idempotency keys are scoped by recipient. Any refusal yields REFUSED
+ ** with reasons; accepted recipients remain queued. Otherwise the aggregate is
+ ** QUEUED if any row is new, or DUPLICATE if all already existed.
  *******************************************************************************/
 public class SlackOutboxMessagingProvider implements MessagingProviderInterface
 {
-   private static final QLogger LOG = QLogger.getLogger(SlackOutboxMessagingProvider.class);
+
 
 
 
@@ -74,49 +69,75 @@ public class SlackOutboxMessagingProvider implements MessagingProviderInterface
 
 
    /*******************************************************************************
-    ** Queue one outbox row per recipient. Anything refused is reported after the
-    ** others were queued, as one QUserFacingException.
+    ** Declare only capabilities implemented by the outbox bridge.
+    *******************************************************************************/
+   @Override
+   public Set<MessagingProviderCapability> getCapabilities()
+   {
+      return (Set.of(MessagingProviderCapability.TEMPLATES, MessagingProviderCapability.IDEMPOTENCY,
+         MessagingProviderCapability.CATEGORIES, MessagingProviderCapability.LINKED_RECORDS, MessagingProviderCapability.ASYNC_DELIVERY));
+   }
+
+
+
+   /*******************************************************************************
+    ** Queue one outbox row per recipient and return the core outcome explicitly.
+    ** Locale is advisory in core and has no Slack outbox equivalent.
     *******************************************************************************/
    @Override
    public SendMessageOutput sendMessage(SendMessageInput input) throws QException
    {
       if(input.getAttachmentList() != null && !input.getAttachmentList().isEmpty())
       {
-         throw (new QUserFacingException("Slack attachments aren't supported yet"));
+         return (refused("Slack attachments aren't supported yet"));
       }
 
       List<String> addresses = new ArrayList<>();
       collect(input.getTo(), addresses);
+      addresses = addresses.stream().distinct().toList();
       if(addresses.isEmpty())
       {
-         throw (new QUserFacingException("A Slack recipient is required"));
+         return (refused("A Slack recipient is required"));
       }
 
       String text = compose(input);
-
       List<String> refusals = new ArrayList<>();
+      ArrayList<Integer> ids = new ArrayList<>();
+      boolean queued = false;
       for(String address : addresses)
       {
-         SlackSendResult result = SlackService.enqueue(new SlackSendRequest().withTo(address).withText(text));
+         String key = input.getIdempotencyKey();
+         if(key != null && addresses.size() > 1)
+         {
+            key += ":" + UUID.nameUUIDFromBytes(address.getBytes(StandardCharsets.UTF_8));
+         }
+         SlackSendResult result = SlackService.enqueue(new SlackSendRequest().withTo(address).withText(text)
+            .withTemplateName(input.getTemplateName()).withVariables(input.getVariables()).withIdempotencyKey(key)
+            .withCategory(input.getCategory()).withSenderName(input.getSenderName())
+            .withLinkedRecord(input.getLinkedTableName(), input.getLinkedRecordId() == null ? null : input.getLinkedRecordId().toString()));
          if(result.status() == SlackSendResult.Status.REFUSED)
          {
             refusals.addAll(result.reasons());
          }
          else
          {
-            ///////////////////////////////////////////////////////////////////////////////////
-            // STAND-IN(core=QRun-IO/qqq#1194, removeBy=4.1.0-RC.8): RC.6's SendMessageOutput //
-            // has no status or message id fields, so the outcome is only logged here        //
-            ///////////////////////////////////////////////////////////////////////////////////
-            LOG.debug("Slack message handed to the outbox", logPair("status", result.status().name()), logPair("messageId", result.messageId()));
+            ids.add(result.messageId());
+            queued |= result.status() == SlackSendResult.Status.QUEUED;
          }
       }
+      return (new SendMessageOutput().withMessageId(ids.isEmpty() ? null : ids.size() == 1 ? ids.get(0) : ids)
+         .withStatus(!refusals.isEmpty() ? SendMessageStatus.REFUSED : queued ? SendMessageStatus.QUEUED : SendMessageStatus.DUPLICATE)
+         .withReasons(refusals));
+   }
 
-      if(!refusals.isEmpty())
-      {
-         throw (new QUserFacingException(String.join("; ", refusals)));
-      }
-      return (new SendMessageOutput());
+
+
+   /*******************************************************************************
+    ** Refusal before any outbox row is created.
+    *******************************************************************************/
+   private static SendMessageOutput refused(String reason)
+   {
+      return (new SendMessageOutput().withStatus(SendMessageStatus.REFUSED).withReasons(List.of(reason)));
    }
 
 

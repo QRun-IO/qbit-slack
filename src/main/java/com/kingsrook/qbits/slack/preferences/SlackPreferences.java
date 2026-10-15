@@ -75,6 +75,21 @@ public class SlackPreferences
    }
 
    /*******************************************************************************
+    ** Resolve a visible workspace label without loading token fields.
+    *******************************************************************************/
+   public static String workspaceLabel(Integer workspaceId) throws QException
+   {
+      List<QRecord> rows = SlackPermissionChecker.workspaceLookup(() -> new QueryAction().execute(new QueryInput(SlackTables.WORKSPACE)
+         .withFilter(SlackStore.equal("id", workspaceId)).withFieldNamesToInclude(Set.of("teamName", "teamId"))).getRecords());
+      if(rows.isEmpty())
+      {
+         return ("Workspace " + workspaceId);
+      }
+      String name = rows.get(0).getValueString("teamName");
+      return (name == null || name.isBlank() ? rows.get(0).getValueString("teamId") : name);
+   }
+
+   /*******************************************************************************
     ** Start signed, single-use OAuth for the current user only.
     *******************************************************************************/
    public static String connect(boolean install)

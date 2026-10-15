@@ -22,33 +22,36 @@ package com.kingsrook.qbits.slack;
 
 
 import java.util.List;
+import java.util.Map;
+import com.kingsrook.qbits.slack.api.SlackApi;
+import com.kingsrook.qbits.slack.api.SlackApiTemplate;
 import com.kingsrook.qbits.slack.bridge.SlackOutboxMessagingProvider;
 import com.kingsrook.qbits.slack.bridge.SlackOutboxMessagingProviderMetaData;
 import com.kingsrook.qbits.slack.metadata.SlackTables;
 import com.kingsrook.qbits.slack.processes.SlackProcesses;
 import com.kingsrook.qqq.backend.core.actions.messaging.SendMessageAction;
-import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.Attachment;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.Content;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.MultiParty;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.Party;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageInput;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageOutput;
+import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageStatus;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.modules.messaging.MessagingProviderCapability;
 import com.kingsrook.qqq.backend.core.modules.messaging.QMessagingProviderDispatcher;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 
 /*******************************************************************************
  ** The core messaging provider: core SendMessageAction with the provider named
  ** "slack" queues rows for the current user, and its refusals reach the caller
- ** as user-facing exceptions. The scheduled dispatch process delivers them.
+ ** as structured outcomes. The scheduled dispatch process delivers them.
  *******************************************************************************/
 class SlackProviderTest
 {
@@ -105,7 +108,8 @@ class SlackProviderTest
    {
       env.asOwner("userA").withPermissions("slack.message.body");
       SendMessageOutput output = new SendMessageAction().execute(input(new Party().withAddress("me")));
-      assertThat(output).isNotNull();
+      assertThat(output.getStatus()).isEqualTo(SendMessageStatus.QUEUED);
+      assertThat(output.getMessageId()).isNotNull();
 
       List<QRecord> rows = SlackH2Support.query(SlackTables.MESSAGE);
       assertThat(rows).hasSize(1);
@@ -136,29 +140,87 @@ class SlackProviderTest
 
 
    /*******************************************************************************
-    ** A refusal is a user-facing exception with the reason: an unconnected user,
-    ** a channel the user isn't in, a missing recipient and an attachment.
-    ** Recipients that can be queued still are.
+    ** Refusals use RC.7 status and reasons; partially accepted recipients retain IDs.
     *******************************************************************************/
    @Test
-   void testRefusalsAreUserFacingExceptions() throws Exception
+   void testRefusalsAreStructured() throws Exception
    {
       env.asOwner("userC");
-      assertThatThrownBy(() -> new SendMessageAction().execute(input(new Party().withAddress("me"))))
-         .isInstanceOf(QUserFacingException.class).hasMessageContaining("Connect Slack");
-
+      assertRefused(input(new Party().withAddress("me")), "Connect Slack");
       env.asOwner("userA");
       env.slack().members("C2", "UOTHER");
-      assertThatThrownBy(() -> new SendMessageAction().execute(input(new Party().withAddress("channel:" + workspaceId + "/C2"))))
-         .isInstanceOf(QUserFacingException.class).hasMessageContaining("aren't a member");
-      assertThatThrownBy(() -> new SendMessageAction().execute(input(null)))
-         .isInstanceOf(QUserFacingException.class).hasMessageContaining("recipient");
-      assertThatThrownBy(() -> new SendMessageAction().execute(input(new Party().withAddress("me")).withAttachment(new Attachment())))
-         .isInstanceOf(QUserFacingException.class).hasMessageContaining("attachments");
-
-      assertThatThrownBy(() -> new SendMessageAction().execute(input(new MultiParty().withParty(new Party().withAddress("me")).withParty(new Party().withAddress("garbage")))))
-         .isInstanceOf(QUserFacingException.class).hasMessageContaining("isn't recognized");
+      assertRefused(input(new Party().withAddress("channel:" + workspaceId + "/C2")), "aren't a member");
+      assertRefused(input(null), "recipient");
+      assertRefused(input(new Party().withAddress("me")).withAttachment(new Attachment()), "attachments");
+      SendMessageOutput partial = new SendMessageAction().execute(input(new MultiParty().withParty(new Party().withAddress("me"))
+         .withParty(new Party().withAddress("garbage"))));
+      assertThat(partial.getStatus()).isEqualTo(SendMessageStatus.REFUSED);
+      assertThat(partial.getReasons().toString()).contains("isn't recognized");
+      assertThat(partial.getMessageId()).isNotNull();
       assertThat(SlackH2Support.query(SlackTables.MESSAGE)).hasSize(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** Assert both the status and useful reason through core's real action.
+    *******************************************************************************/
+   private void assertRefused(SendMessageInput input, String reason) throws Exception
+   {
+      SendMessageOutput result = new SendMessageAction().execute(input);
+      assertThat(result.getStatus()).isEqualTo(SendMessageStatus.REFUSED);
+      assertThat(result.getReasons().toString()).contains(reason);
+      assertThat(result.getMessageId()).isNull();
+   }
+
+
+
+   /*******************************************************************************
+    ** Rich fields reach the outbox and repeat sends report the original row ID.
+    *******************************************************************************/
+   @Test
+   void richInputAndDeduplication() throws Exception
+   {
+      env.asSystem();
+      SlackApi.ensureTemplate(new SlackApiTemplate("hello", "Hello", "Hello {{name}}", null,
+         "[{\"name\":\"name\",\"type\":\"STRING\"}]", "TRANSACTIONAL"));
+      env.asOwner("userA").withPermissions("slack.message.body");
+      assertThat(SendMessageAction.capabilities("slack")).containsExactlyInAnyOrder(MessagingProviderCapability.TEMPLATES,
+         MessagingProviderCapability.IDEMPOTENCY, MessagingProviderCapability.CATEGORIES,
+         MessagingProviderCapability.LINKED_RECORDS, MessagingProviderCapability.ASYNC_DELIVERY);
+      SendMessageInput input = input(new Party().withAddress("me")).withTemplateName("hello").withVariables(Map.of("name", "Alice"))
+         .withIdempotencyKey("rich-input").withCategory("TRANSACTIONAL").withSenderName("Reports")
+         .withLinkedRecord(SlackTables.WORKSPACE, workspaceId).withLocale("en-US");
+      SendMessageOutput first = new SendMessageAction().execute(input);
+      assertThat(first.getStatus()).isEqualTo(SendMessageStatus.QUEUED);
+      SendMessageOutput second = new SendMessageAction().execute(input);
+      assertThat(second.getStatus()).isEqualTo(SendMessageStatus.DUPLICATE);
+      assertThat(second.getMessageId()).isEqualTo(first.getMessageId());
+      var rows = SlackH2Support.query(SlackTables.MESSAGE);
+      assertThat(rows).hasSize(1);
+      assertThat(rows.get(0).getValues()).containsEntry("templateName", "hello").containsEntry("category", "TRANSACTIONAL")
+         .containsEntry("senderName", "Reports").containsEntry("linkedTableName", SlackTables.WORKSPACE)
+         .containsEntry("linkedRecordId", String.valueOf(workspaceId)).containsEntry("text", "Hello Alice");
+   }
+
+
+
+   /*******************************************************************************
+    ** One key must not collapse multiple recipients onto the first recipient's row.
+    *******************************************************************************/
+   @Test
+   void multiPartyIdempotency() throws Exception
+   {
+      env.asOwner("userA");
+      SendMessageInput input = input(new MultiParty().withParty(new Party().withAddress("me"))
+         .withParty(new Party().withAddress("channel:" + workspaceId + "/C1"))).withIdempotencyKey("multi-input");
+      SendMessageOutput first = new SendMessageAction().execute(input);
+      assertThat(first.getStatus()).isEqualTo(SendMessageStatus.QUEUED);
+      assertThat((List<?>) first.getMessageId()).hasSize(2);
+      SendMessageOutput second = new SendMessageAction().execute(input);
+      assertThat(second.getStatus()).isEqualTo(SendMessageStatus.DUPLICATE);
+      assertThat(second.getMessageId()).isEqualTo(first.getMessageId());
+      assertThat(SlackH2Support.query(SlackTables.MESSAGE)).hasSize(2);
    }
 
 

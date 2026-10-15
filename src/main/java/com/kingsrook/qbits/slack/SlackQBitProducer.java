@@ -150,7 +150,10 @@ public class SlackQBitProducer implements QBitMetaDataProducer<SlackQBitConfig>
       com.kingsrook.qbits.slack.delivery.SlackDeliveryDestination.register();
       qInstance.addApp(com.kingsrook.qbits.slack.app.SlackApp.app(qInstance.getTables()));
       com.kingsrook.qbits.slack.app.SlackApp.widgets().forEach(qInstance::addWidget);
-      com.kingsrook.qbits.slack.preferences.SlackPreferencesAdapter.register(qInstance);
+      if(isPreferencesAvailable())
+      {
+         com.kingsrook.qbits.slack.preferences.SlackPreferencesProvider.register(qInstance);
+      }
       com.kingsrook.qbits.slack.oauth.SlackOAuthRouteProvider.register(qInstance);
       com.kingsrook.qbits.slack.interactivity.SlackActions.registerBuiltIns(qInstance, getQBitConfig());
       try
@@ -164,6 +167,24 @@ public class SlackQBitProducer implements QBitMetaDataProducer<SlackQBitConfig>
       }
       com.kingsrook.qbits.slack.metadata.SlackHelp.apply(qInstance);
       return (new MetaDataProducerMultiOutput());
+   }
+
+
+
+   /*******************************************************************************
+    ** Guard only class availability; registration errors must still surface.
+    *******************************************************************************/
+   private static boolean isPreferencesAvailable()
+   {
+      try
+      {
+         Class.forName("com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferencesMetaData", false, SlackQBitProducer.class.getClassLoader());
+         return (true);
+      }
+      catch(ClassNotFoundException | LinkageError e)
+      {
+         return (false);
+      }
    }
 
 
