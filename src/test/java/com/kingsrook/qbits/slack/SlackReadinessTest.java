@@ -33,6 +33,7 @@ import com.kingsrook.qbits.slack.support.SlackStore;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -61,6 +62,58 @@ class SlackReadinessTest
          assertThat(SlackReadiness.deployment(env.instance()).checks()).anyMatch(c -> c.name().equals("app") && c.status().equals("ERROR"));
       }
    }
+
+   /*******************************************************************************
+    ** No Slack secrets at all is "not configured": UNKNOWN, never DOWN, so an
+    ** optional, unset Slack integration can't fail a readiness probe.
+    *******************************************************************************/
+   @Test
+   void notConfiguredIsUnknownNotDown() throws Exception
+   {
+      try(SlackTestEnv env = environment())
+      {
+         env.config().withSecretResolver(n -> null);
+         assertThat(SlackReadiness.deployment(env.instance()).checks())
+            .anyMatch(c -> c.name().equals("app") && c.status().equals(SlackReadiness.NOT_CONFIGURED));
+         var result = new SlackHealth().check(env.instance());
+         assertThat(result.getStatus().name()).isEqualTo("UNKNOWN");
+         assertThat(result.getDetails()).containsEntry("configured", false);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Before readiness has run, health is UNKNOWN rather than degraded or down.
+    *******************************************************************************/
+   @Test
+   void notYetCheckedIsUnknown() throws Exception
+   {
+      try(SlackTestEnv env = environment())
+      {
+         QInstance fresh = new QInstance();
+         assertThat(new SlackHealth().check(fresh).getStatus().name()).isEqualTo("UNKNOWN");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Partially configured (some secrets set, others missing) is a real
+    ** misconfiguration and stays DOWN.
+    *******************************************************************************/
+   @Test
+   void partiallyConfiguredIsDown() throws Exception
+   {
+      try(SlackTestEnv env = environment())
+      {
+         env.config().withSecretResolver(n -> "SLACK_CLIENT_ID".equals(n) ? "123.456" : null);
+         SlackReadiness.deployment(env.instance());
+         assertThat(new SlackHealth().check(env.instance()).getStatus().name()).isEqualTo("DOWN");
+      }
+   }
+
+
 
    /*******************************************************************************
     ** A valid Base64 string still needs exactly 32 decoded bytes.
@@ -166,7 +219,7 @@ class SlackReadinessTest
    }
 
    /*******************************************************************************
-    ** Uninitialized readiness maps to degraded health without network access.
+    ** Uninitialized readiness maps to UNKNOWN health without network access.
     *******************************************************************************/
    @Test
    void notReadyHealth() throws Exception
@@ -174,7 +227,7 @@ class SlackReadinessTest
       try(SlackTestEnv env = environment())
       {
          assertThat(SlackReadiness.stored(env.instance()).ready()).isFalse();
-         assertThat(new SlackHealth().check(env.instance()).getStatus().name()).isEqualTo("DEGRADED");
+         assertThat(new SlackHealth().check(env.instance()).getStatus().name()).isEqualTo("UNKNOWN");
          assertThat(env.slack().requests()).isEmpty();
       }
    }
