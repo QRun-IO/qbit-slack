@@ -31,14 +31,14 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
-import com.kingsrook.qbits.slack.metadata.SlackHelp;
 import com.kingsrook.qbits.slack.metadata.SlackTables;
 import com.kingsrook.qbits.slack.support.SlackStore;
 import com.kingsrook.qbits.slack.template.SlackTemplates;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
-import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.help.bundles.HelpBundles;
+import com.kingsrook.qqq.backend.core.testing.HelpBundleAssertions;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -153,37 +153,21 @@ class SlackTablesGuardrailTest
       QInstance instance = SlackH2Support.setup(c ->
       {
       });
-      assertThat(SlackHelp.entries()).allSatisfy((key, entry) -> assertThat(entry.path("summary").asText().length()).as(key).isLessThanOrEqualTo(120));
+      HelpBundleAssertions.forInstance(instance)
+         .bundles("help/qbit-slack.yaml")
+         .owning(target -> target.name().startsWith("slack"))
+         .assertComplete();
+      var bundles = HelpBundles.of(instance).getBundles();
+      assertThat(bundles).hasSize(1);
+      assertThat(bundles.get(0).getId()).isEqualTo("qbit-slack");
       for(String table : SlackTables.ALL)
       {
-         List<QHelpContent> help = instance.getTable(table).getHelpContent() == null ? null : instance.getTable(table).getHelpContent().get(SlackHelp.SLOT);
-         assertThat(help).as(table + " table help").isNotEmpty();
-         assertThat(help.get(0).getContent()).as(table + " help says how rows get created").contains("How rows get created");
+         assertThat(bundles.get(0).getEntries()).filteredOn(entry -> entry.getKey().equals("table:" + table + ";slot:help"))
+            .singleElement().satisfies(entry -> assertThat(entry.getContent()).isNotBlank());
       }
-      assertThat(instance.getApp(SlackHelp.APP_NAME).getHelpContent()).containsKey(SlackHelp.SLOT);
-      assertThat(SlackHelp.entries().keySet()).allMatch(key -> !key.startsWith("table:") || instance.getTable(key.substring(6, key.indexOf(';'))) != null,
-         "help names only real tables");
-      assertThat(SlackHelp.entries().get("table:slack_channel;slot:help").path("content").asText()).contains("Check channels");
-   }
-
-
-
-   /*******************************************************************************
-    ** Help a host put in the slot first is never replaced by the bundle.
-    *******************************************************************************/
-   @Test
-   void hostHelpIsKept() throws Exception
-   {
-      QInstance instance = SlackH2Support.setup(c ->
-      {
-      });
-      QHelpContent host = new QHelpContent().withContentAsMarkdown("Host help for channels");
-      instance.getTable(SlackTables.CHANNEL).getHelpContent().put(SlackHelp.SLOT, new ArrayList<>(List.of(host)));
-      instance.getApp(SlackHelp.APP_NAME).getHelpContent().put(SlackHelp.SLOT, new ArrayList<>(List.of(host)));
-      SlackHelp.apply(instance);
-      assertThat(instance.getTable(SlackTables.CHANNEL).getHelpContent().get(SlackHelp.SLOT)).containsExactly(host);
-      assertThat(instance.getApp(SlackHelp.APP_NAME).getHelpContent().get(SlackHelp.SLOT)).containsExactly(host);
-      assertThat(instance.getTable(SlackTables.MESSAGE).getHelpContent().get(SlackHelp.SLOT).get(0).getContent()).contains("How rows get created");
+      // Hosts without the help table still register metadata; core safely skips sync.
+      assertThat(instance.getTable("helpContent")).isNull();
+      HelpBundles.syncOnStartup(instance);
    }
 
 

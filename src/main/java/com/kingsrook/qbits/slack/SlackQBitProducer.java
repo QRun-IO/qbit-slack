@@ -31,6 +31,7 @@ import com.kingsrook.qbits.slack.security.SlackSecurity;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.help.bundles.HelpBundles;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaDataProducer;
 
@@ -165,7 +166,8 @@ public class SlackQBitProducer implements QBitMetaDataProducer<SlackQBitConfig>
       {
          // Optional health module is absent in this host.
       }
-      com.kingsrook.qbits.slack.metadata.SlackHelp.apply(qInstance);
+      // Registration is metadata-only; core startup sync guards hosts without helpContent.
+      HelpBundles.register(qInstance, "help/qbit-slack.yaml");
       return (new MetaDataProducerMultiOutput());
    }
 

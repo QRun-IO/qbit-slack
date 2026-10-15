@@ -55,6 +55,19 @@ Send with core `SendMessageAction` and the provider name `slack`, or deliver out
 destination. Don't import this qbit's internal packages; `com.kingsrook.qbits.slack.api` is the only
 public surface.
 
+## In-app help
+
+The producer registers [help/qbit-slack.yaml](src/main/resources/help/qbit-slack.yaml)
+with QQQ's help bundle registry. Hosts with help content enabled sync it at startup;
+registration is harmless without a `helpContent` table. Live references use the host's current labels.
+
+To override text, register a separate bundle with `layer: HOST` and the same entry keys
+(and roles) using `HelpBundles.register(qInstance, "help/your-host.yaml")`.
+HOST entries take precedence over QBIT entries; user edits are preserved by core sync.
+
+`SlackTablesGuardrailTest.everyTableHasEmptyStateHelp` runs `HelpBundleAssertions` over
+Slack's produced metadata to check coverage, keys, summaries and live references during `verify`.
+
 ## Build
 
 ```bash
