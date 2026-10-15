@@ -230,14 +230,15 @@ have changed since the message was queued. Then it decrypts **only** the token o
 There is no addressing by email, and no raw Slack ids without a workspace. `MultiParty` gives one outbox row
 per recipient. An unknown or unauthorized target is REFUSED with a reason, never an exception.
 
-- **Capabilities** (core #1194): `TEMPLATES`, `IDEMPOTENCY`, `CATEGORIES`, `LINKED_RECORDS`, `ASYNC_DELIVERY`
-  and `MESSAGE_LOOKUP`.
-- **Output:** `QUEUED` with the id, `DUPLICATE` with the earlier id, or `REFUSED` or `SUPPRESSED` with reasons.
+- **Capabilities** (core #1194): `TEMPLATES`, `IDEMPOTENCY`, `CATEGORIES`, `LINKED_RECORDS`, `ASYNC_DELIVERY`.
+- **Output:** `QUEUED` with the id, `DUPLICATE` with the earlier id, or `REFUSED` with reasons.
+  For multiple recipients, `messageId` contains the accepted IDs (a list when more than one), and
+  idempotency keys are scoped by recipient. A partial refusal returns `REFUSED` with accepted IDs;
+  otherwise the status is `QUEUED` if any row is new, or `DUPLICATE` if all already existed.
 - **Content:** `subject` becomes the bold first line and the notification text. Content items are mrkdwn,
   escaped. A Block Kit JSON body needs `slack.send.blocks`. A template wins.
-- **Dependency:** QQQ 4.1.0-RC.6 has the plain provider SPI. #1194's rich fields arrive in RC.7.
-  - Until then the bridge maps the RC.6 fields, and `SlackApi` carries the rest.
-  - The gap is marked `STAND-IN(core=#1194, removeBy=RC.8)`.
+- **Dependency:** QQQ 4.1.0-RC.7. The bridge maps template name, variables, idempotency key,
+  category, linked record and sender name directly to the outbox. Locale remains advisory and is ignored.
 
 ### 4.3 Public API `com.kingsrook.qbits.slack.api` (mirrors `EmailApi`)
 
@@ -529,7 +530,13 @@ qbit-slack's own Preferences section (core #1162) has:
 
 - the list of Connections, read-only;
 - the actions **Connect Slack**, **Disconnect** and **Send me a test message**;
-- for tenant admins, **Install for my organization**.
+- with `slack.workspace.install`, **Install for my organization**.
+
+The section requires `slack.connect`, appears in the user menu, and rejects PATCH requests.
+Actions are filtered per session; test messages also require `slack.send`. RC.7 has no action-level
+permission property, so the section returns a filtered metadata view without mutating its shared
+registrations. Connect and Install return their authorize URL in `UserPreferenceActionResult.message`;
+RC.7 has no external-link or redirect result field, so this does not automatically navigate the client.
 
 Without qbit-alerts, callers use `SendMessageAction` (`slack`, `me` or `user:<id>`) directly.
 
@@ -694,7 +701,7 @@ DDL is `docs/ddl/slack-postgres.sql`. kof22 applies it as a Liquibase changeset.
 
 **Phase 1f: app, home and preferences section.**
 
-- Built on core #1162 (RC.7). Until then the work is behind a stand-in.
+- Built directly on the core #1162 preferences SPI (RC.7), with a class-availability guard for registration.
 - Screenshots: home, a message and a connection, light and dark, at 390 and 1440 px.
 
 **Phase 1g: qbit-alerts routing (section 10).** A separate qbit-alerts PR.
