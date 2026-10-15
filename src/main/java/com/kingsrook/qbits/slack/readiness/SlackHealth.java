@@ -64,9 +64,29 @@ public class SlackHealth implements HealthIndicator
    public HealthCheckResult check(QInstance instance)
    {
       var readiness = SlackReadiness.stored(instance);
-      boolean appFailed = readiness.checks().stream().anyMatch(c -> "app".equals(c.name()) && "ERROR".equals(c.status()));
-      HealthStatus status = appFailed ? HealthStatus.DOWN : readiness.ready() ? HealthStatus.UP : HealthStatus.DEGRADED;
+      String appStatus = readiness.checks().stream().filter(c -> "app".equals(c.name())).map(c -> c.status()).findFirst().orElse("UNKNOWN");
+
+      //////////////////////////////////////////////////////////////////////////////
+      // Slack is optional. Not configured (no secrets at all) or not yet checked //
+      // is UNKNOWN, which never fails a readiness probe (HTTP 200). Only a       //
+      // configured-but-broken app (partial or invalid secrets) is DOWN.          //
+      //////////////////////////////////////////////////////////////////////////////
+      if(SlackReadiness.NOT_CONFIGURED.equals(appStatus))
+      {
+         return (new HealthCheckResult().withStatus(HealthStatus.UNKNOWN)
+            .withDetail("configured", false)
+            .withDetail("message", "Slack is not configured")
+            .withDetail("checks", readiness.checks()));
+      }
+      if("UNKNOWN".equals(appStatus))
+      {
+         return (new HealthCheckResult().withStatus(HealthStatus.UNKNOWN)
+            .withDetail("message", "Slack readiness has not run yet")
+            .withDetail("checks", readiness.checks()));
+      }
+      HealthStatus status = "ERROR".equals(appStatus) ? HealthStatus.DOWN : readiness.ready() ? HealthStatus.UP : HealthStatus.DEGRADED;
       return (new HealthCheckResult().withStatus(status)
+         .withDetail("configured", true)
          .withDetail("checks", readiness.checks()));
    }
 }
