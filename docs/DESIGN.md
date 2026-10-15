@@ -430,6 +430,11 @@ user with `users.lookupByEmail`, but only when the IdP marked the session email 
   results, and a user sees their own in Preferences.
 - **Checks run:** every `readinessIntervalMinutes` (15), on the **Check readiness** action, and from
   `SlackApi.readiness*`. Messages never include token values or exception text.
+- **Not configured is not a failure.** With no Slack app secrets at all, the `app` check is NOT_CONFIGURED and
+  health is UNKNOWN (HTTP 200) with `configured: false`. Before the first readiness run, health is also UNKNOWN.
+  Only a configured-but-broken app (some secrets missing, or an invalid token key) is DOWN. Slack is optional, so an
+  unset Slack integration must never fail a readiness probe; "not configured" shows in the readiness and
+  central-health views only.
 - **Health:** when `qqq-middleware-health` is present, the qbit registers `HealthCheckMetaData` `slack`.
   - It reports the stored deployment-level readiness (`app` and `outbox`), without calling Slack on each
     probe.

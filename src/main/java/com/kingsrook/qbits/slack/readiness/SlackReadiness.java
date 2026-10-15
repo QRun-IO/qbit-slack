@@ -47,6 +47,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
  *******************************************************************************/
 public final class SlackReadiness
 {
+   public static final String NOT_CONFIGURED = "NOT_CONFIGURED";
+
    private static final Map<QInstance, SlackApiReadiness> STORED = Collections.synchronizedMap(new WeakHashMap<>());
 
    private static final Map<QInstance, Map<Integer, SlackApiReadiness>> WORKSPACES = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
@@ -87,6 +89,17 @@ public final class SlackReadiness
          app = false;
       }
       List<SlackApiReadinessCheck> checks = new ArrayList<>();
+      if(!app && !anySecretPresent(config))
+      {
+         //////////////////////////////////////////////////////////////////////////
+         // no SLACK_* secret at all: Slack is simply not set up in this        //
+         // deployment. That is a state, not a failure; health reports UNKNOWN. //
+         //////////////////////////////////////////////////////////////////////////
+         checks.add(new SlackApiReadinessCheck("app", NOT_CONFIGURED, "Slack is not configured: no Slack app secrets are set"));
+         SlackApiReadiness result = new SlackApiReadiness(false, checks);
+         STORED.put(instance, result);
+         return (result);
+      }
       checks.add(check("app", app, "Application configuration"));
       boolean outbox = true;
       if(config != null && QContext.getQInstance() == instance)
@@ -111,6 +124,33 @@ public final class SlackReadiness
       STORED.put(instance, result);
       return (result);
    }
+
+   /*******************************************************************************
+    ** True when at least one of the app's secret names resolves to a value.
+    ** Presence only; values are never retained.
+    *******************************************************************************/
+   static boolean anySecretPresent(SlackQBitConfig config)
+   {
+      if(config == null)
+      {
+         return (false);
+      }
+      for(String name : java.util.Arrays.asList(config.getClientIdEnvName(), config.getClientSecretEnvName(), config.getSigningSecretEnvName(), config.getTokenKeyEnvName()))
+      {
+         try
+         {
+            SlackSecrets.get(config, name);
+            return (true);
+         }
+         catch(RuntimeException e)
+         {
+            // absent or not allowed; keep looking
+         }
+      }
+      return (false);
+   }
+
+
 
    /*******************************************************************************
     ** Last scheduled deployment result, without network or database work.
