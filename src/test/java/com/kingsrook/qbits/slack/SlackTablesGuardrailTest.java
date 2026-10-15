@@ -160,6 +160,8 @@ class SlackTablesGuardrailTest
       var bundles = HelpBundles.of(instance).getBundles();
       assertThat(bundles).hasSize(1);
       assertThat(bundles.get(0).getId()).isEqualTo("qbit-slack");
+      assertThat(System.getProperty("qbit.artifactVersion")).isNotBlank();
+      assertThat(bundles.get(0).getVersion()).isEqualTo(System.getProperty("qbit.artifactVersion")).isEqualTo(SlackQBitProducer.VERSION);
       for(String table : SlackTables.ALL)
       {
          assertThat(bundles.get(0).getEntries()).filteredOn(entry -> entry.getKey().equals("table:" + table + ";slot:help"))

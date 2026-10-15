@@ -45,6 +45,8 @@ class SlackQBitProducerTest
       SlackQBitProducer producer = new SlackQBitProducer().withQBitConfig(config).withNamespace("ns");
 
       QBitMetaData metaData = producer.getQBitMetaData();
+      assertThat(System.getProperty("qbit.artifactVersion")).isNotBlank();
+      assertThat(metaData.getVersion()).isEqualTo(System.getProperty("qbit.artifactVersion")).isEqualTo(SlackQBitProducer.VERSION);
       assertThat(metaData.getArtifactId()).isEqualTo("qbit-slack");
       assertThat(metaData.getGroupId()).isEqualTo("com.kingsrook.qbits");
       assertThat(producer.getNamespace()).isEqualTo("ns");

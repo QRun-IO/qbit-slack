@@ -21,8 +21,11 @@
 package com.kingsrook.qbits.slack;
 
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 import com.kingsrook.qbits.slack.bridge.SlackOutboxMessagingProviderMetaData;
 import com.kingsrook.qbits.slack.delivery.SlackAlerts;
 import com.kingsrook.qbits.slack.metadata.SlackTables;
@@ -43,10 +46,38 @@ public class SlackQBitProducer implements QBitMetaDataProducer<SlackQBitConfig>
 {
    public static final String GROUP_ID    = "com.kingsrook.qbits";
    public static final String ARTIFACT_ID = "qbit-slack";
-   public static final String VERSION     = "0.1.0";
+   public static final String VERSION     = loadVersion();
 
    private SlackQBitConfig qBitConfig;
    private String          namespace;
+
+
+
+   /*******************************************************************************
+    ** Read the artifact version from the Maven-filtered properties resource.
+    *******************************************************************************/
+   private static String loadVersion()
+   {
+      try(InputStream inputStream = SlackQBitProducer.class.getClassLoader().getResourceAsStream("qbit-slack.properties"))
+      {
+         if(inputStream == null)
+         {
+            throw (new IllegalStateException("Missing qbit-slack.properties; build with Maven to supply the artifact version"));
+         }
+         Properties properties = new Properties();
+         properties.load(inputStream);
+         String version = properties.getProperty("version");
+         if(version == null || version.isBlank() || version.contains("${"))
+         {
+            throw (new IllegalStateException("Missing or unfiltered version in qbit-slack.properties; build with Maven"));
+         }
+         return (version);
+      }
+      catch(IOException e)
+      {
+         throw (new IllegalStateException("Could not read artifact version from qbit-slack.properties", e));
+      }
+   }
 
 
 
