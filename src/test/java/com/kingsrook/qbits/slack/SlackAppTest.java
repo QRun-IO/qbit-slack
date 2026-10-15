@@ -32,7 +32,6 @@ import com.kingsrook.qbits.slack.metadata.SlackTables;
 import com.kingsrook.qbits.slack.permissions.SlackPermissionChecker;
 import com.kingsrook.qbits.slack.permissions.SlackPermissions;
 import com.kingsrook.qbits.slack.preferences.SlackPreferences;
-import com.kingsrook.qbits.slack.preferences.SlackPreferencesAdapter;
 import com.kingsrook.qbits.slack.processes.SlackProcesses;
 import com.kingsrook.qbits.slack.security.SlackSecurity;
 import com.kingsrook.qbits.slack.support.SlackStore;
@@ -297,7 +296,7 @@ class SlackAppTest
    }
 
    /*******************************************************************************
-    ** RC.6 skips registration; personal section exposes only permitted actions.
+    ** Personal section exposes only permitted actions.
     *******************************************************************************/
    @Test
    void preferencesAndConnect() throws Exception
@@ -305,7 +304,6 @@ class SlackAppTest
       try(SlackTestEnv env = SlackTestEnv.create(false, c -> c.withPublicBaseUrl("http://localhost:8099")
          .withSecretResolver(name -> "SLACK_TOKEN_KEY".equals(name) ? SlackTokenCipherTest.KEY_ONE : "demo-secret")))
       {
-         assertThat(SlackPreferencesAdapter.register(env.instance())).isFalse();
          int workspace = env.workspace("T", null, "xoxb-demo", "B");
          env.connection("alice", workspace, "UA", null);
          env.connection("bob", workspace, "UB", null);
