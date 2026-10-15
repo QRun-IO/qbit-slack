@@ -6,6 +6,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- QBit metadata now reports the Maven artifact version, including release versions, from a filtered properties resource.
+
 ### Added
 - Complete host-neutral in-app help bundle with live labels and core `HelpBundleAssertions` coverage; registered through QQQ 4.1.0-RC.7 `HelpBundles`, replacing the temporary loader.
 - "Check channels" action on Registered Channels; readiness now writes the channel's Slack name, private, bot is member, archived, purpose and checked time back to the row.
