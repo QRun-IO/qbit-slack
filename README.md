@@ -12,7 +12,7 @@ Design: [docs/DESIGN.md](docs/DESIGN.md).
 ## Requirements
 
 - Java 21
-- QQQ 4.1 (currently built against 4.1.0-RC.6)
+- QQQ 4.1 (currently built against 4.1.0-RC.7)
 - A Slack app created from [docs/slack-app-manifest.yaml](docs/slack-app-manifest.yaml)
 
 ## Install
